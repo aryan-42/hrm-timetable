@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Term IV · Timetable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Hanken+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --paper:#F7F6F2; --panel:#FFFFFF; --ink:#18181B; --mut:#6E6E76;
+  --line:#E4E2DA; --red:#D9362B; --green:#0B7A55;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:'Hanken Grotesk',system-ui,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto;padding:0 16px 140px}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+h1{font-family:'Anton',sans-serif;font-weight:400}
+
+/* header */
+header{padding:1.5rem 0 .9rem;display:flex;justify-content:space-between;align-items:flex-end;gap:.8rem;flex-wrap:wrap}
+header h1{font-size:2.2rem;line-height:.95;text-transform:uppercase;display:flex;align-items:center;gap:.45rem}
+header h1 em{font-style:normal;color:var(--red)}
+header h1::before{content:"";width:.62em;height:.62em;background:var(--red);display:inline-block}
+.sub{font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin-top:.4rem}
+.hbtns{display:flex;gap:8px;flex-shrink:0}
+.icon-btn{background:var(--ink);border:none;color:#fff;padding:.5rem .75rem;font-size:.74rem;font-weight:700;display:flex;align-items:center;gap:.4rem}
+.icon-btn svg{width:13px;height:13px;stroke:#fff;fill:none}
+.spin svg{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.sync{display:flex;align-items:center;gap:.5rem;padding:.55rem 0 .8rem;font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);border-bottom:3px solid var(--ink)}
+.sync .led{width:8px;height:8px;background:var(--green);flex-shrink:0}
+.sync.stale .led{background:#C99700}
+.sync.err .led{background:var(--red)}
+.sync #officialLink{margin-left:auto;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);text-decoration:none;border-bottom:2px solid var(--red);padding-bottom:1px}
+.sync #officialLink:hover{color:var(--red)}
+
+/* bottom tab bar — floats clear of bezels & home indicators */
+.tabbar{
+  position:fixed;z-index:40;
+  left:max(12px, env(safe-area-inset-left,0px));
+  right:max(12px, env(safe-area-inset-right,0px));
+  bottom:max(12px, calc(env(safe-area-inset-bottom,0px) + 8px));
+  display:flex;justify-content:center;pointer-events:none;
+}
+.tabbar nav{
+  pointer-events:auto;display:flex;width:100%;max-width:520px;
+  background:var(--panel);border:2px solid var(--ink);
+  box-shadow:4px 4px 0 var(--ink);
+}
+.tab{flex:1;background:none;border:none;color:var(--mut);padding:.75rem 0;font-size:.66rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.tab.on{background:var(--ink);color:#fff}
+.tab.on::before{content:"● ";color:var(--red);font-size:.5rem;vertical-align:2px}
+
+/* up next hero */
+.upnext{margin:1.2rem 0 .4rem}
+.upnext .lbl{font-family:'Anton',sans-serif;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
+.hero{background:var(--ink);color:#fff;padding:1.1rem 1.2rem;margin-top:.5rem}
+.hero .h-count{font-family:'Anton',sans-serif;font-size:2.4rem;line-height:1;text-transform:uppercase}
+.hero .h-count em{font-style:normal;color:var(--red);-webkit-text-stroke:0}
+.hero .h-what{font-weight:800;font-size:1.02rem;margin-top:.45rem}
+.hero .h-meta{font-size:.78rem;font-weight:600;color:#bdbdc4;margin-top:2px}
+.hero.calm{background:var(--panel);color:var(--ink);border:1.5px solid var(--line)}
+.hero.calm .h-meta{color:var(--mut)}
+
+/* key date chips */
+.keychips{display:flex;gap:8px;overflow-x:auto;margin:.9rem 0 .2rem;padding-bottom:4px}
+.kchip{flex-shrink:0;border:1.5px solid var(--ink);background:var(--panel);padding:.45rem .7rem}
+.kchip .kd{font-family:'Anton',sans-serif;font-size:1rem;line-height:1}
+.kchip .kl{font-size:.62rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.kchip.exam{border-color:var(--red)}
+.kchip.exam .kd{color:var(--red)}
+
+/* what changed */
+.diffcard{background:var(--panel);border:2px solid var(--red);margin:1rem 0;padding:.9rem 1rem}
+.diffcard h3{font-family:'Anton',sans-serif;font-weight:400;font-size:.95rem;letter-spacing:.08em;text-transform:uppercase;color:var(--red);margin-bottom:.4rem}
+.diffcard ul{list-style:none}
+.diffcard li{font-size:.84rem;font-weight:600;padding:.25rem 0;border-top:1px solid var(--line)}
+.diffcard li:first-child{border-top:none}
+.diffcard .dismiss{margin-top:.6rem;background:var(--ink);color:#fff;border:none;padding:.45rem .8rem;font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+
+/* section labels */
+.slab{font-family:'Anton',sans-serif;font-size:.92rem;letter-spacing:.1em;text-transform:uppercase;margin:1.6rem 0 .7rem;border-top:3px solid var(--ink);padding-top:.55rem;display:flex;justify-content:space-between;align-items:center}
+.slab .wknav{display:flex;gap:6px}
+.slab .wknav button{background:var(--panel);border:1.5px solid var(--ink);width:30px;height:30px;font-weight:800;font-size:.9rem;line-height:1}
+
+/* class rows */
+.cls{display:grid;grid-template-columns:92px 1fr;margin-bottom:6px;border:none}
+.cls .time{background:var(--cc,var(--ink));color:#fff;font-family:'Anton',sans-serif;font-size:1.02rem;line-height:1.1;padding:.55rem .6rem;display:flex;flex-direction:column;justify-content:center}
+.cls .time small{font-family:'Hanken Grotesk',sans-serif;font-size:.6rem;font-weight:700;opacity:.85}
+.cls .body{background:var(--panel);border:1.5px solid var(--line);border-left:none;padding:.5rem .8rem;display:flex;flex-direction:column;justify-content:center;position:relative}
+.cls .name{font-weight:800;font-size:.93rem;line-height:1.2}
+.cls .meta{font-size:.72rem;font-weight:600;color:var(--mut);margin-top:2px}
+.cls .tag{font-size:.58rem;font-weight:800;color:#fff;background:var(--cc,var(--ink));padding:.06rem .35rem;margin-left:.45rem;vertical-align:2px}
+.cls.now .body{border-color:var(--ink)}
+.cls.now .name::after{content:"● NOW";color:var(--red);font-size:.6rem;letter-spacing:.08em;margin-left:.5rem;vertical-align:2px}
+.cls.past{cursor:pointer}
+.cls.past .time{opacity:.55}
+.cls.past .body::after{content:"TAP IF MISSED";position:absolute;right:.6rem;top:50%;transform:translateY(-50%);font-size:.54rem;font-weight:800;letter-spacing:.08em;color:#c9c7bf}
+.cls.missed .time{opacity:.4}
+.cls.missed .body{background:#FBEAE8}
+.cls.missed .name{text-decoration:line-through;text-decoration-color:var(--red)}
+.cls.missed .body::after{content:"MISSED ✕";color:var(--red)}
+
+/* day groups */
+.day{margin-bottom:14px}
+.day .dhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.45rem}
+.day .dname{font-family:'Anton',sans-serif;font-size:1.02rem;text-transform:uppercase}
+.day .dname .tdy{color:#fff;background:var(--red);font-family:'Hanken Grotesk',sans-serif;font-size:.58rem;font-weight:800;letter-spacing:.12em;padding:.13rem .4rem;margin-left:.55rem;vertical-align:3px}
+.day .dcount{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.day.istoday .dname{color:var(--red)}
+.day .sp{background:var(--red);color:#fff;padding:.75rem 1rem;font-weight:700}
+.day .sp.hol{background:var(--green)}
+.day .sp .splbl{font-family:'Anton',sans-serif;font-size:.76rem;letter-spacing:.12em;margin-right:.6rem}
+.nilday{background:var(--panel);border:1.5px dashed var(--line);padding:.55rem .9rem;font-size:.78rem;font-weight:600;color:var(--mut)}
+.note-line{font-size:.74rem;font-weight:700;color:var(--green);margin-top:2px}
+
+/* key dates list (Term tab) */
+.kdlist{display:flex;flex-direction:column;gap:6px;margin-bottom:.4rem}
+.kdrow{display:flex;align-items:center;gap:.8rem;background:var(--panel);border:1.5px solid var(--line);padding:.55rem .8rem}
+.kdrow .kdd{font-family:'Anton',sans-serif;font-size:.95rem;min-width:74px}
+.kdrow .kdt{font-weight:700;font-size:.85rem}
+.kdrow.exam .kdd{color:var(--red)}
+.kdrow.hol .kdd{color:var(--green)}
+
+/* attendance (Me tab) */
+.att{display:flex;flex-direction:column;gap:8px}
+.attrow{background:var(--panel);border:1.5px solid var(--line);border-left:6px solid var(--cc,var(--ink));padding:.65rem .85rem}
+.attrow .top{display:flex;justify-content:space-between;align-items:baseline}
+.attrow .an{font-weight:800;font-size:.88rem}
+.attrow .ap{font-family:'Anton',sans-serif;font-size:1.05rem}
+.attrow .ap.bad{color:var(--red)}
+.attrow .abar{height:6px;background:var(--paper);border:1px solid var(--line);margin:.4rem 0}
+.attrow .abar i{display:block;height:100%;background:var(--cc,var(--ink))}
+.attrow .as{font-size:.7rem;font-weight:700;color:var(--mut)}
+.attrow .as b{color:var(--ink)}
+.attrow .as .bad{color:var(--red)}
+
+/* me tab misc */
+.mecard{background:var(--panel);border:1.5px solid var(--line);padding:.9rem 1rem;margin-bottom:10px}
+.mecard .mt{font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin-bottom:.45rem}
+.mecard .mv{font-weight:700;font-size:.9rem}
+.mebtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem}
+.mebtn{background:var(--ink);color:#fff;border:none;padding:.6rem .9rem;font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.mebtn.alt{background:var(--panel);color:var(--ink);border:1.5px solid var(--ink)}
+
+/* exam rows */
+.exrow{display:grid;grid-template-columns:92px 1fr;margin-top:6px}
+.exrow .extime{background:var(--red);color:#fff;font-family:'Anton',sans-serif;font-size:1rem;line-height:1.1;padding:.5rem .6rem;display:flex;flex-direction:column;justify-content:center}
+.exrow .extime small{font-family:'Hanken Grotesk',sans-serif;font-size:.6rem;font-weight:700;opacity:.9}
+.exrow .exbody{background:var(--panel);border:1.5px solid var(--red);border-left:none;padding:.5rem .8rem}
+.exname{font-weight:800;font-size:.92rem}
+.exmeta{font-size:.72rem;font-weight:600;color:var(--mut);margin-top:2px}
+
+/* manual override cards */
+.ovwrap{margin:.2rem 0 0}
+.ovcard{display:flex;align-items:center;gap:.7rem;background:#FFF1D6;border:2px solid #C99700;padding:.7rem .85rem;margin-bottom:8px}
+.ovi{width:26px;height:26px;flex-shrink:0;background:#C99700;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
+.ovb{flex:1}.ovt{font-weight:800;font-size:.9rem}
+.ovm{font-size:.68rem;font-weight:700;color:#7a5e00}
+.ovx{background:none;border:1px solid #C99700;color:#7a5e00;font-size:.62rem;font-weight:800;text-transform:uppercase;padding:.25rem .45rem;flex-shrink:0}
+
+/* pending update note (students) */
+.pending{background:#FFF6E0;border:2px solid #C99700;padding:.6rem .9rem;margin:.6rem 0 0;font-size:.78rem;font-weight:700;color:#7a5e00;display:flex;align-items:center;gap:.5rem}
+.pending .pd{width:8px;height:8px;border-radius:50%;background:#C99700;flex-shrink:0}
+
+/* approver review panel */
+.review{background:var(--panel);border:2px solid var(--ink);box-shadow:4px 4px 0 var(--ink);padding:1rem;margin:.8rem 0 0}
+.review h3{font-family:'Anton',sans-serif;font-weight:400;font-size:1rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.5rem}
+.review .rsub{font-size:.78rem;font-weight:600;color:var(--mut);margin-bottom:.7rem}
+.review ul{list-style:none;max-height:240px;overflow:auto;border:1px solid var(--line)}
+.review li{font-size:.8rem;font-weight:600;padding:.4rem .6rem;border-top:1px solid var(--line)}
+.review li:first-child{border-top:none}
+.review li.add{color:var(--green)}.review li.rem{color:var(--red)}.review li.mov{color:#6D28D9}
+.review .racts{display:flex;gap:8px;margin-top:.8rem}
+.review .rbtn{flex:1;border:none;padding:.7rem;font-size:.78rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.review .rok{background:var(--green);color:#fff}
+.review .rno{background:var(--panel);border:2px solid var(--ink);color:var(--ink)}
+.review .src{display:block;margin-top:.6rem;font-size:.72rem;font-weight:700}
+
+/* roster auto-fill banner */
+.roster{background:#EAF5EF;border:2px solid var(--green);padding:.8rem 1rem;margin-bottom:.4rem}
+.roster b{display:block;font-size:.95rem}
+.roster span{font-size:.78rem;font-weight:600;color:var(--mut)}
+
+/* setup */
+.setup{padding:1.4rem 0}
+.setup h2{font-family:'Anton',sans-serif;font-weight:400;font-size:1.8rem;text-transform:uppercase;margin-bottom:.4rem}
+.setup p{color:var(--mut);font-weight:600;font-size:.9rem;margin-bottom:1.3rem}
+.f-lbl{font-size:.7rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;display:block;margin:1.3rem 0 .6rem}
+.segs{display:flex;gap:8px}
+.seg{flex:1;background:var(--panel);border:2px solid var(--ink);padding:.85rem;font-size:.92rem;font-weight:800;text-transform:uppercase}
+.seg.on{background:var(--ink);color:#fff}
+.courses{display:flex;flex-direction:column;gap:8px}
+.crs{display:flex;align-items:center;gap:.8rem;background:var(--panel);border:1.5px solid var(--line);border-left:6px solid var(--cc,var(--line));padding:.7rem .9rem;text-align:left;width:100%;color:var(--ink)}
+.crs .box{width:20px;height:20px;border:2px solid var(--ink);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff}
+.crs.on .box{background:var(--ink)}
+.crs .cn{font-weight:800;font-size:.88rem}
+.crs .cf{font-size:.7rem;font-weight:600;color:var(--mut)}
+.crs .badge{margin-left:auto;font-size:.56rem;font-weight:800;letter-spacing:.12em;background:var(--ink);color:#fff;padding:.14rem .4rem;flex-shrink:0}
+.primary{width:100%;margin-top:1.5rem;background:var(--red);color:#fff;border:none;padding:1rem;font-size:.92rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.primary:disabled{opacity:.35;cursor:not-allowed}
+
+/* states */
+.state{padding:3.2rem 0;text-align:center}
+.state .big{font-family:'Anton',sans-serif;font-size:1.5rem;text-transform:uppercase;margin-bottom:.6rem}
+.state p{color:var(--mut);font-weight:600;font-size:.88rem;max-width:420px;margin:0 auto .4rem}
+.loader{width:28px;height:28px;background:var(--red);margin:0 auto 1.1rem;animation:flip 1s ease-in-out infinite}
+@keyframes flip{50%{transform:rotate(90deg) scale(.8)}100%{transform:rotate(180deg)}}
+.state.error .big{color:var(--red)}
+.retry{margin-top:1.1rem;background:var(--panel);border:2px solid var(--ink);padding:.65rem 1.3rem;font-size:.82rem;font-weight:800;text-transform:uppercase}
+.fixsteps{background:var(--panel);border:1.5px solid var(--line);padding:1rem 1.1rem;margin:1rem auto 0;max-width:420px;text-align:left;font-size:.83rem;color:var(--mut);font-weight:600}
+.fixsteps b{color:var(--ink)}
+.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(140px);background:var(--ink);color:#fff;padding:.6rem 1.1rem;font-size:.78rem;font-weight:700;transition:transform .3s ease;z-index:50;white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}.loader,.spin svg{animation-duration:2s}}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Term <em>IV</em></h1>
+      <div class="sub">Timetable · MBA-HRM 2025–27 · XIM · BUILD v6.8</div>
+    </div>
+    <div class="hbtns">
+      <button class="icon-btn" id="refreshBtn" title="Re-sync now">
+        <svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        Sync
+      </button>
+    </div>
+  </header>
+  <div class="sync" id="syncBar"><span class="led"></span><span id="syncText">Connecting…</span><a id="officialLink" href="#" target="_blank" rel="noopener">Official sheet ↗</a></div>
+
+  <div class="state" id="loadingView">
+    <div class="loader"></div>
+    <div class="big">Reading the live schedule</div>
+    <p id="loadingMsg">Fetching this term's sheet.</p>
+  </div>
+
+  <div class="state error hide" id="errorView">
+    <div class="big">Couldn't read the schedule</div>
+    <p id="errorMsg"></p>
+    <div class="fixsteps">
+      <b>If you maintain this app:</b> check that the Apps Script trigger is running
+      (script.google.com → Executions) and that Supabase is reachable.
+    </div>
+    <button class="retry" id="retryBtn">Try again</button>
+  </div>
+
+  <div class="state hide" id="loginView">
+    <div class="big">Your timetable, your ID</div>
+    <p>Sign in with your college Google account and your section, electives and attendance follow you on every device. Or keep everything on this device only.</p>
+    <button class="primary" id="googleBtn" style="max-width:340px">Continue with college Google</button><br>
+    <button class="retry" id="skipBtn">Skip — this device only</button>
+  </div>
+
+  <div class="setup hide" id="setupView">
+    <h2>Set up</h2>
+    <div id="setupBanner"></div>
+    <p id="setupHint">Pick your section and electives. You can change this anytime from the Me tab.</p>
+    <span class="f-lbl">Your section</span>
+    <div class="segs" id="secSegs">
+      <button class="seg" data-sec="A">Sec A · CR-330</button>
+      <button class="seg" data-sec="B">Sec B · CR-331</button>
+    </div>
+    <span class="f-lbl">Your courses</span>
+    <div class="courses" id="courseList"></div>
+    <button class="primary" id="saveBtn" disabled>Show my timetable</button>
+  </div>
+
+  <main class="hide" id="mainView">
+    <div id="tab-today"></div>
+    <div id="tab-week" class="hide"></div>
+    <div id="tab-term" class="hide"></div>
+    <div id="tab-me" class="hide"></div>
+  </main>
+</div>
+
+<div class="tabbar hide" id="tabbar"><nav>
+  <button class="tab on" data-tab="today">Today</button>
+  <button class="tab" data-tab="week">Week</button>
+  <button class="tab" data-tab="term">Term</button>
+  <button class="tab" data-tab="me">Me</button>
+</nav></div>
+<div class="toast" id="toast"></div>
+<script>
+/* ================= CONFIG ================= */
+const SUPA_URL = "https://atfkuxvjrypsdxxmsmnm.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0Zmt1eHZqcnlwc2R4eG1zbW5tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDExMDUsImV4cCI6MjA5NjY3NzEwNX0.SNFiiI3qKxxPiUwMh2Vb_ksMcdKp4x7GZEg-zUXctvk";
+const DEFAULT_SRC = "";
+const DEFAULT_SHEET_ID = "1o766BFepifra3xqzfin-6neuo4HBNRy6";
+const Q = new URLSearchParams(location.search);
+const SRC = Q.get("src") || DEFAULT_SRC;
+const SHEET_ID = Q.get("sheet") || DEFAULT_SHEET_ID;
+const CSV_URLS = SRC ? [SRC] : [
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`,
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`
+];
+const SLOTS = {1:["08:00","09:30"],2:["09:45","11:15"],3:["11:30","13:00"],4:["13:50","14:25"],5:["14:30","16:00"],6:["16:15","17:45"],7:["18:00","19:30"]};
+const VENUE = {A:"CR-330", B:"CR-331", "A&B":"CR-330 & 331"};
+const POLL_MS = 10*60*1000;
+const SHEET_VIEW_URL = "https://docs.google.com/spreadsheets/d/1o766BFepifra3xqzfin-6neuo4HBNRy6/edit";
+const ATT_REQ = 0.80; // attendance requirement
+// Confirmed multi-day blocks (registrar labels only the first day in the sheet).
+// Dates are inclusive. Verified with the program office / batch.
+// Official Mid-Term Exam Schedule — Controller of Examinations, XIM (07-07-26)
+const EXAM_VENUE = "EH-01";
+const EXAMS = [
+  // ---- MID-TERM (Controller's notice 07-07-26) ----
+  {date:"2026-07-27", start:"10:00", course:"CMAC",  phase:"Mid-Term", faculty:"Prof. Arup Roy Chowdhury & Prof. Subhra Pattnaik"},
+  {date:"2026-07-27", start:"14:00", course:"HAHC",  phase:"Mid-Term", faculty:"Prof. Arup Roy Chowdhury"},
+  {date:"2026-07-28", start:"10:00", course:"HRAN",  phase:"Mid-Term", faculty:"Prof. Faiz Ahamad"},
+  {date:"2026-07-28", start:"14:00", course:"PRMA",  phase:"Mid-Term", faculty:"Prof. Sunil K. Agrawala"},
+  {date:"2026-07-29", start:"10:00", course:"LALR",  phase:"Mid-Term", faculty:"Prof. Sanjeev Shantkumar Doshi"},
+  {date:"2026-07-29", start:"14:00", course:"INHRM", phase:"Mid-Term", faculty:"Prof. Subhra Pattnaik"},
+  {date:"2026-07-30", start:"10:00", course:"PICM",  phase:"Mid-Term", faculty:"Prof. Kalpana Sahoo"},
+  {date:"2026-08-03", start:"10:00", course:"STMA",  phase:"Mid-Term", faculty:"Prof. Anshuman Tripathy"},
+  // ---- END-TERM (Controller's notice 22-08-26) ----
+  {date:"2026-09-07", start:"10:00", course:"STMA",  phase:"End-Term", faculty:"Prof. Rajnandan Patnaik"},
+  {date:"2026-09-07", start:"14:00", course:"LALR",  phase:"End-Term", faculty:"Prof. Sanjeev Shantkumar Doshi"},
+  {date:"2026-09-08", start:"10:00", course:"PRMA",  phase:"End-Term", faculty:"Prof. Sunil K. Agrawala"},
+  {date:"2026-09-08", start:"14:00", course:"PICM",  phase:"End-Term", faculty:"Prof. Kalpana Sahoo"},
+  {date:"2026-09-09", start:"10:00", course:"HAHC",  phase:"End-Term", faculty:"Prof. Arup Roy Chowdhury"},
+  {date:"2026-09-10", start:"10:00", course:"INHRM", phase:"End-Term", faculty:"Prof. Subhra Pattnaik"},
+  {date:"2026-09-11", start:"10:00", course:"HRAN",  phase:"End-Term", faculty:"Prof. Faiz Ahamad"},
+  {date:"2026-09-12", start:"10:00", course:"CMAC",  phase:"End-Term", faculty:"Prof. Arup Roy Chowdhury & Prof. Subhra Pattnaik"},
+];
+function fmt12(t){const p=t.split(":"),h=+p[0];return (h%12||12)+":"+p[1]+" "+(h>=12?"PM":"AM");}
+const SPANS = [
+  {kind:"EXAM", text:"Mid Term Exam",  from:"2026-07-27", to:"2026-07-30"},
+  {kind:"EXAM", text:"Mid Term Exam",  from:"2026-08-03", to:"2026-08-03"},
+  {kind:"NOTE", text:"Immersion Course", from:"2026-08-20", to:"2026-08-22"},
+  {kind:"EXAM", text:"End Term Exam",  from:"2026-09-07", to:"2026-09-12"},
+];
+function spanStamp(d){const[y,m,dd]=d.split("-").map(Number);return new Date(y,m-1,dd).setHours(0,0,0,0);}
+
+/* ================= STATE & STORAGE ================= */
+let prefs=null, data=null, fetchedAt=null, syncing=false, lastCsvHash=null;
+let attendance={};            // {"CODE_session": 1} = missed
+let pendingDiff=null;         // {at, items:[]}
+let curTab="today";
+let isApprover=false, stagingCsv=null, stagingDiff=[];
+let overrides=[];
+const mem={};
+function sGet(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return mem[k]??null; } }
+function sSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} mem[k]=v; }
+
+/* ================= FETCH ================= */
+async function fetchCSV(){
+  let lastErr=null;
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/timetable_csv?id=eq.1&select=csv`,{headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY}});
+    if(!r.ok) throw new Error("Supabase HTTP "+r.status);
+    const rows=await r.json();
+    const csv=rows?.[0]?.csv;
+    if(csv && csv.length>200) return csv;
+    throw new Error("No schedule pushed yet");
+  }catch(e){ lastErr=e; }
+  for(const url of CSV_URLS){
+    try{
+      const r=await fetch(url,{redirect:"follow"});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      const t=await r.text();
+      if(t.trim().startsWith("<")) throw new Error("Sheet isn't public");
+      return t;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr||new Error("Fetch failed");
+}
+
+/* ================= PARSE ================= */
+function parseCSV(t){
+  const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else{ if(c==='"')q=true;
+      else if(c===','){row.push(cur);cur="";}
+      else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur="";}
+      else if(c!=='\r')cur+=c; }
+  }
+  if(cur!==""||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+const MONTHS={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+function parseDate(s){
+  const m=(s||"").trim().match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+  if(!m||!(m[2] in MONTHS)) return null;
+  const y=m[3].length===2?2000+ +m[3]:+m[3];
+  return new Date(y, MONTHS[m[2]], +m[1]);
+}
+const TOKEN_RE=/^([A-Z]{2,8})_(A&B|A|B)?(\d+)(?:_([A-Za-z&]+))?$/;
+const TAG_RE=/^(S|A|S&A|A&S)$/;
+function parseCell(cell){
+  const entries=[];
+  for(const raw of (cell||"").split(/[\s\n]+/)){
+    const tok=raw.trim().replace(/[.,]$/,"");
+    if(!tok) continue;
+    const m=tok.match(TOKEN_RE);
+    if(m){ entries.push({code:m[1],section:m[2]||null,session:+m[3],tag:m[4]||null}); }
+    else if(TAG_RE.test(tok) && entries.length){ entries[entries.length-1].tag=tok; }
+  }
+  return entries;
+}
+function parseSchedule(csvText){
+  const rows=parseCSV(csvText);
+  const courses=[],days=[];
+  for(const r of rows){
+    for(let ci=0;ci<Math.min(r.length,4);ci++){
+      const cm=(r[ci]||"").match(/^([\s\S]+?)\s*\(([A-Z]{2,8})\)[\s\S]*credit/i);
+      if(cm){
+        const fac=((r[5]||"")+(r[6]||"")).replace(/\([^)]*@[^)]*\)/g,"").replace(/\\/g,"").replace(/\s+/g," ").trim();
+        courses.push({code:cm[2],name:cm[1].replace(/\\/g,"").replace(/\s+/g," ").trim(),type:/core/i.test(r[ci])?"Core":"Elective",faculty:fac});
+        break;
+      }
+    }
+    const dt=parseDate(r[0]); if(!dt) continue;
+    const rec={date:dt.getTime(),day:(r[1]||"").trim(),note:(r[9]||"").trim(),special:null,slots:[]};
+    const first=(r[2]||"").trim();
+    if(first && !parseCell(first).length && !/^reserve$/i.test(first)){
+      const k=/holiday/i.test(first)?"HOL":/exam/i.test(first)?"EXAM":"NOTE";
+      rec.special={kind:k,text:first.replace(/\\/g,"").replace(/\s+/g," ")};
+    }else{
+      const map=[[2,1],[3,2],[4,3],[5,4],[6,5],[7,6],[8,7]];
+      for(const[ci,slot]of map){
+        const cell=(r[ci]||"").trim();
+        if(!cell||/^reserve$/i.test(cell)) continue;
+        const es=parseCell(cell);
+        if(es.length) rec.slots.push({slot,entries:es});
+      }
+    }
+    if((rec.special||rec.slots.length||rec.note) && !days.some(d=>d.date===rec.date)) days.push(rec);
+  }
+  days.sort((a,b)=>a.date-b.date);
+  const seen=new Set();
+  return {courses:courses.filter(c=>!seen.has(c.code)&&seen.add(c.code)),days};
+}
+function applySpans(d){
+  const byDate=new Map(d.days.map(r=>[r.date,r]));
+  for(const sp of SPANS){
+    let t=spanStamp(sp.from), end=spanStamp(sp.to);
+    const total=Math.round((end-t)/86400000)+1, idx0=t;
+    while(t<=end){
+      const dt=new Date(t), dow=dt.getDay();
+      // skip Sundays inside an exam/immersion block (no exam on Sunday here)
+      if(dow!==0){
+        const dayNum=Math.round((t-idx0)/86400000)+1;
+        const label = total>1 ? `${sp.text} (Day ${dayNum})` : sp.text;
+        let rec=byDate.get(t);
+        if(rec){ rec.special={kind:sp.kind,text:label}; rec.slots=[]; }
+        else{ rec={date:t,day:dt.toLocaleDateString("en-GB",{weekday:"short"}),note:"",special:{kind:sp.kind,text:label},slots:[]};
+               d.days.push(rec); byDate.set(t,rec); }
+      }
+      t+=86400000;
+    }
+  }
+  d.days.sort((a,b)=>a.date-b.date);
+}
+function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))|0;}return h;}
+
+/* ================= AUTH ================= */
+let sb=null,user=null;
+function initSB(){ try{ if(window.supabase) sb=window.supabase.createClient(SUPA_URL,SUPA_KEY); }catch(e){} }
+async function checkAuth(){
+  if(!sb)return;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(session?.user){
+      const em=session.user.email||"";
+      if(!/xim\.edu\.in$/i.test(em)){ toast("Use your college (xim.edu.in) account"); await sb.auth.signOut(); user=null; return; }
+      user=session.user;
+    }
+  }catch(e){}
+}
+async function loadCloud(){
+  if(!sb||!user)return;
+  try{
+    const {data:d,error}=await sb.from("user_prefs").select("section,courses,attendance").eq("user_id",user.id).maybeSingle();
+    if(error||!d)return;
+    prefs={section:d.section,courses:d.courses}; sSet("tt-prefs",prefs);
+    if(d.attendance&&typeof d.attendance==="object"){attendance=d.attendance; sSet("tt-att",attendance);}
+  }catch(e){}
+}
+async function saveCloud(silent){
+  if(!sb||!user||!prefs)return;
+  try{
+    const {error}=await sb.from("user_prefs").upsert({user_id:user.id,email:user.email,section:prefs.section,courses:prefs.courses,attendance,updated_at:new Date().toISOString()});
+    if(error){ if(!silent)toast("Cloud save failed: "+error.message); }
+    else if(!silent)toast("Saved to your college ID");
+  }catch(e){}
+}
+let roster=null; // {roll,name,courses} from the official enrollment list
+async function loadRoster(){
+  roster=null;
+  if(!sb||!user)return;
+  try{
+    const roll=(user.email||"").split("@")[0].toUpperCase();
+    if(!/^UH\d{5}$/.test(roll))return;
+    const {data:d,error}=await sb.from("enrollment").select("roll,name,courses,section").eq("roll",roll).maybeSingle();
+    if(!error&&d)roster=d;
+  }catch(e){}
+}
+async function checkApprover(){
+  isApprover=false;
+  if(!sb||!user)return;
+  try{
+    const roll=(user.email||"").split("@")[0].toUpperCase();
+    const {data:d}=await sb.from("approvers").select("roll").eq("roll",roll).maybeSingle();
+    isApprover=!!d;
+  }catch(e){}
+}
+async function loadOverrides(){
+  overrides=[];
+  try{
+    const today=new Date(); today.setHours(0,0,0,0);
+    const iso=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    // direct REST with anon key so this works even when the user is NOT signed in
+    const url=`${SUPA_URL}/rest/v1/overrides?active=eq.true&for_date=gte.${iso}&select=*&order=for_date`;
+    const r=await fetch(url,{headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY}});
+    if(r.ok){const d=await r.json(); if(Array.isArray(d))overrides=d;}
+  }catch(e){}
+}
+async function addOverride(o){
+  if(!sb||!isApprover){toast("Approver only");return false;}
+  const roll=(user.email||"").split("@")[0].toUpperCase();
+  const {error}=await sb.from("overrides").insert({...o,created_by:roll});
+  if(error){toast("Failed: "+error.message);return false;}
+  await loadOverrides(); toast("Override published to batch"); return true;
+}
+async function deactivateOverride(id){
+  if(!sb||!isApprover)return;
+  const {error}=await sb.from("overrides").update({active:false}).eq("id",id);
+  if(error){toast("Failed: "+error.message);return;}
+  await loadOverrides(); renderTab();
+}
+async function loadStaging(){
+  stagingCsv=null; stagingDiff=[];
+  if(!sb)return;
+  try{
+    const {data:d}=await sb.from("timetable_staging").select("csv").eq("id",1).maybeSingle();
+    if(d&&d.csv) stagingCsv=d.csv;
+  }catch(e){}
+}
+async function approveStaging(){
+  if(!sb){toast("Sign in to approve");return;}
+  const {error}=await sb.rpc("approve_staging");
+  if(error){toast("Approve failed: "+error.message);return;}
+  toast("Published to the batch");
+  await syncNow(false);
+}
+async function loginGoogle(){
+  if(!sb){toast("Sign-in isn't configured yet");return;}
+  const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}});
+  if(error)toast("Sign-in failed: "+error.message);
+}
+async function logout(){
+  try{await sb?.auth.signOut();}catch(e){}
+  user=null;toast("Signed out — data stays on this device");renderTab();
+}
+
+/* ================= DERIVED ================= */
+const $=id=>document.getElementById(id);
+const PALETTE=["#2456D6","#0B7A55","#C2410C","#6D28D9","#BE185D","#0E7490","#A16207","#4D7C0F"];
+function courseColor(c){const i=data?data.courses.findIndex(x=>x.code===c):-1;return PALETTE[(i<0?0:i)%PALETTE.length];}
+const courseName=c=>(data?.courses.find(x=>x.code===c)?.name)||c;
+const courseFac=c=>(data?.courses.find(x=>x.code===c)?.faculty)||"";
+function todayStamp(){const t=new Date();t.setHours(0,0,0,0);return t.getTime();}
+function nowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+function slotRange(n){const[a,b]=SLOTS[n];const f=t=>{const[x,y]=t.split(":");return +x*60+ +y;};return[f(a),f(b)];}
+function fmtNice(t){return new Date(t).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});}
+function weekKey(t){const x=new Date(t);const d=(x.getDay()+6)%7;x.setDate(x.getDate()-d);x.setHours(0,0,0,0);return x.getTime();}
+function myExams(dateTs){
+  const d=new Date(dateTs);
+  const iso=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  return EXAMS.filter(e=>e.date===iso && (!prefs || prefs.courses.includes(e.course)))
+              .sort((a,b)=>a.start.localeCompare(b.start));
+}
+function examRow(e){
+  const p=e.start.split(":"),h=+p[0];
+  return `<div class="exrow"><div class="extime">${(h%12||12)+":"+p[1]}<small>${h>=12?"PM":"AM"}</small></div>
+    <div class="exbody"><div class="exname">${courseName(e.course)}</div>
+    <div class="exmeta">${e.phase?e.phase+" \u00b7 ":""}${e.course} \u00b7 ${e.phase==="End-Term"?"Venue TBA":EXAM_VENUE} \u00b7 ${e.faculty}</div></div></div>`;
+}
+function overridesFor(dateTs){
+  const d=new Date(dateTs);
+  const iso=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  return overrides.filter(o=>o.for_date===iso &&
+    (!o.section || !prefs || o.section===prefs.section) &&
+    (!o.course || !prefs || prefs.courses.includes(o.course)));
+}
+function myEntries(rec){
+  if(!prefs)return[];
+  const out=[];
+  for(const sl of rec.slots)
+    for(const e of sl.entries)
+      if(prefs.courses.includes(e.code)&&(!e.section||e.section==="A&B"||e.section===prefs.section))
+        out.push({slot:sl.slot,...e});
+  out.sort((a,b)=>a.slot-b.slot);
+  return out;
+}
+function isHeld(dateTs,slot){ // class already over?
+  const ts=todayStamp();
+  if(dateTs<ts)return true;
+  if(dateTs>ts)return false;
+  return nowMin()>slotRange(slot)[1];
+}
+const attKey=e=>e.code+"_"+e.session;
+
+/* ================= UI BASICS ================= */
+function show(id){ ["loadingView","errorView","setupView","mainView","loginView"].forEach(v=>$(v).classList.toggle("hide",v!==id));
+  $("tabbar").classList.toggle("hide", id!=="mainView"); }
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),3200);}
+function setSync(st,m){$("syncBar").className="sync"+(st?" "+st:"");$("syncText").textContent=m;}
+
+function clsRow(e,dateTs,opts={}){
+  const[a,b]=SLOTS[e.slot]||["",""];
+  const held=isHeld(dateTs,e.slot);
+  const live=dateTs===todayStamp()&&nowMin()>=slotRange(e.slot)[0]&&nowMin()<=slotRange(e.slot)[1];
+  const missed=!!attendance[attKey(e)];
+  const cl=["cls"];
+  if(live)cl.push("now");
+  if(held&&!opts.noMark)cl.push("past");
+  if(missed)cl.push("missed");
+  return `<div class="${cl.join(" ")}" style="--cc:${courseColor(e.code)}" ${held&&!opts.noMark?`data-att="${attKey(e)}"`:""}>
+    <div class="time">${a.replace(/^0/,"")}<small>– ${b}</small></div>
+    <div class="body"><div class="name">${courseName(e.code)}${e.tag?`<span class="tag">${e.tag}</span>`:""}</div>
+    <div class="meta">${e.code}${e.session?` · S${e.session}`:""} · ${VENUE[e.section||prefs.section]||""}</div></div>
+  </div>`;
+}
+function dayBlock(rec,opts={}){
+  const isToday=rec.date===todayStamp();
+  if(rec.special){
+    const hol=rec.special.kind==="HOL";
+    return `<div class="day${isToday?" istoday":""}">
+      <div class="dhead"><span class="dname">${fmtNice(rec.date)}${isToday?'<span class="tdy">TODAY</span>':""}</span></div>
+      <div class="sp${hol?" hol":""}"><span class="splbl">${rec.special.kind==="EXAM"?"EXAM":hol?"HOLIDAY":"NOTE"}</span>${rec.special.text}</div>
+      ${(()=>{const ex=myExams(rec.date);
+        if(ex.length)return ex.map(examRow).join("");
+        return rec.special.kind==="EXAM"?`<div class="nilday">No exam for you on this day</div>`:"";})()}</div>`;
+  }
+  const mine=myEntries(rec);
+  return `<div class="day${isToday?" istoday":""}">
+    <div class="dhead"><span class="dname">${fmtNice(rec.date)}${isToday?'<span class="tdy">TODAY</span>':""}</span>
+    <span class="dcount">${mine.length} ${mine.length===1?"class":"classes"}</span></div>
+    ${mine.length?mine.map(e=>clsRow(e,rec.date,opts)).join(""):`<div class="nilday">No classes for you</div>`}
+    ${rec.note?`<div class="note-line">▸ ${rec.note}</div>`:""}</div>`;
+}
+
+/* ================= TAB: TODAY ================= */
+function upNextHTML(){
+  const ts=todayStamp(),rec=data.days.find(d=>d.date===ts);
+  const mine=rec&&!rec.special?myEntries(rec):[];
+  const m=nowMin();
+  // current or next class today
+  for(const e of mine){
+    const[a,b]=slotRange(e.slot);
+    if(m<=b){
+      const live=m>=a;
+      const mins=live?b-m:a-m;
+      const hhmm=mins>=60?Math.floor(mins/60)+"h "+(mins%60)+"m":mins+" min";
+      return `<div class="hero">
+        <div class="h-count">${live?"NOW":"IN "+hhmm}</div>
+        <div class="h-what">${courseName(e.code)}${e.session?` · S${e.session}`:""}</div>
+        <div class="h-meta">${live?"Ends "+SLOTS[e.slot][1]:"Starts "+SLOTS[e.slot][0].replace(/^0/,"")} · ${VENUE[e.section||prefs.section]} · ${courseFac(e.code)}</div>
+      </div>`;
+    }
+  }
+  if(rec&&rec.special){
+    const hol=rec.special.kind==="HOL";
+    const ex=myExams(ts);
+    if(rec.special.kind==="EXAM"&&ex.length){
+      const nxt=ex[0];
+      return `<div class="hero"><div class="h-count">${(nxt.phase||"EXAM").toUpperCase()} \u00b7 ${fmt12(nxt.start)}</div>
+        <div class="h-what">${courseName(nxt.course)}</div>
+        <div class="h-meta">${nxt.phase==="End-Term"?"Venue TBA":EXAM_VENUE} \u00b7 ${nxt.faculty}${ex.length>1?` \u00b7 +${ex.length-1} more today`:""}</div></div>`;
+    }
+    return `<div class="hero calm"><div class="h-count" style="color:${hol?"var(--green)":"var(--red)"}">${hol?"HOLIDAY":rec.special.kind==="EXAM"?"EXAM DAY":"NOTE"}</div>
+      <div class="h-what">${rec.special.text}</div>
+      ${rec.special.kind==="EXAM"?`<div class="h-meta">No exam for you today</div>`:""}</div>`;
+  }
+  // nothing (left) today -> find next class day
+  const next=data.days.find(d=>d.date>ts&&!d.special&&myEntries(d).length);
+  if(next){
+    const n=myEntries(next);
+    const dayName=next.date-ts===86400000?"Tomorrow":fmtNice(next.date);
+    return `<div class="hero calm"><div class="h-count">${mine.length?"DONE FOR TODAY":"NO CLASSES TODAY"}</div>
+      <div class="h-what">${dayName}: ${n.length} ${n.length===1?"class":"classes"}, first at ${SLOTS[n[0].slot][0].replace(/^0/,"")}</div></div>`;
+  }
+  return `<div class="hero calm"><div class="h-count">TERM OVER</div><div class="h-what">No upcoming classes in the sheet.</div></div>`;
+}
+function keyChipsHTML(){
+  const ts=todayStamp();
+  const ups=data.days.filter(d=>d.special&&d.date>=ts).slice(0,4);
+  if(!ups.length)return"";
+  return `<div class="keychips">`+ups.map(d=>{
+    const days=Math.round((d.date-ts)/86400000);
+    return `<div class="kchip ${d.special.kind==="EXAM"?"exam":""}">
+      <div class="kd">${days===0?"TODAY":days+" days"}</div>
+      <div class="kl">${d.special.text.length>26?d.special.text.slice(0,24)+"…":d.special.text} · ${fmtNice(d.date)}</div></div>`;
+  }).join("")+`</div>`;
+}
+function diffHTML(){
+  if(!pendingDiff||!pendingDiff.items.length)return"";
+  return `<div class="diffcard"><h3>Schedule changed</h3><ul>${pendingDiff.items.slice(0,8).map(i=>`<li>${i}</li>`).join("")}</ul>
+    <button class="dismiss" id="diffDismiss">Got it</button></div>`;
+}
+function renderToday(){
+  const ts=todayStamp(),rec=data.days.find(d=>d.date===ts);
+  const mine=rec&&!rec.special?myEntries(rec):[];
+  const later=mine.filter(e=>nowMin()<=slotRange(e.slot)[1]).slice(1);
+  const done=mine.filter(e=>nowMin()>slotRange(e.slot)[1]);
+  const todayOv=overridesFor(todayStamp());
+  const ovHTML = todayOv.length ? `<div class="ovwrap">`+todayOv.map(o=>ovCard(o)).join("")+`</div>` : "";
+  const pend=(stagingDiff&&stagingDiff.length);
+  const pendNote=pend&&!isApprover?`<div class="pending"><span class="pd"></span>A schedule update is awaiting review — showing the last approved version.</div>`:"";
+  const reviewPanel=pend&&isApprover?reviewHTML():"";
+  $("tab-today").innerHTML=
+    `<div class="upnext"><span class="lbl">Up next</span>${upNextHTML()}</div>`
+    +ovHTML+pendNote+reviewPanel+diffHTML()+keyChipsHTML()
+    +(later.length?`<div class="slab">Later today</div>`+later.map(e=>clsRow(e,ts)).join(""):"")
+    +(done.length?`<div class="slab">Earlier · tap if you missed one</div>`+done.map(e=>clsRow(e,ts)).join(""):"");
+  const d=$("diffDismiss");
+  if(d)d.addEventListener("click",()=>{pendingDiff=null;sSet("tt-diff",null);renderTab();});
+  document.querySelectorAll("[data-ovdel]").forEach(b=>b.addEventListener("click",()=>deactivateOverride(b.dataset.ovdel)));
+  const ap=$("rApprove"); if(ap)ap.addEventListener("click",approveStaging);
+  const rj=$("rReject"); if(rj)rj.addEventListener("click",()=>{toast("Left unpublished — fix the sheet, it re-checks next sync");});
+}
+function ovCard(o){
+  const icon=o.kind==="cancel"?"\u2715":o.kind==="move"?"\u27f3":o.kind==="add"?"+":"!";
+  return `<div class="ovcard"><div class="ovi">${icon}</div>
+    <div class="ovb"><div class="ovt">${o.course?o.course+" \u00b7 ":""}${o.text}</div>
+      <div class="ovm">Manual update${o.section?" \u00b7 Sec "+o.section:" \u00b7 both sections"} \u00b7 not yet in official sheet</div></div>
+    ${isApprover?`<button class="ovx" data-ovdel="${o.id}">remove</button>`:""}</div>`;
+}
+function reviewHTML(){
+  const items=stagingDiff.slice(0,60).map(t=>{
+    const cl=/^Added/.test(t)?"add":/^Removed/.test(t)?"rem":/→/.test(t)?"mov":"";
+    return `<li class="${cl}">${t}</li>`;
+  }).join("");
+  return `<div class="review"><h3>⚠ ${stagingDiff.length} change${stagingDiff.length>1?"s":""} awaiting your approval</h3>
+    <div class="rsub">Covers <strong>all courses and both sections</strong> \u2014 not just yours. Publishing applies every change below. Check anything ambiguous against the source first.</div>
+    <ul>${items}</ul>
+    ${stagingDiff.length>60?`<div class="rsub" style="margin-top:.5rem">+ ${stagingDiff.length-60} more not shown \u2014 review the sheet directly before publishing.</div>`:""}
+    <a class="src" href="${SHEET_VIEW_URL}" target="_blank" rel="noopener">↗ Open the official sheet to verify</a>
+    <div class="racts"><button class="rbtn rok" id="rApprove">Publish to batch</button>
+    <button class="rbtn rno" id="rReject">Not yet</button></div></div>`;
+}
+
+/* ================= TAB: WEEK ================= */
+let weekOffset=0;
+function renderWeek(){
+  const base=weekKey(todayStamp())+weekOffset*7*86400000;
+  const recs=data.days.filter(d=>weekKey(d.date)===base);
+  const label=weekOffset===0?"This week":weekOffset===1?"Next week":"Week of "+new Date(base).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+  $("tab-week").innerHTML=
+    `<div class="slab">${label}<span class="wknav"><button id="wkPrev" aria-label="Previous week">‹</button><button id="wkNext" aria-label="Next week">›</button></span></div>`
+    +(recs.length?recs.map(r=>dayBlock(r)).join(""):`<div class="nilday">Nothing scheduled this week.</div>`);
+  $("wkPrev").addEventListener("click",()=>{weekOffset--;renderWeek();});
+  $("wkNext").addEventListener("click",()=>{weekOffset++;renderWeek();});
+}
+
+/* ================= TAB: TERM ================= */
+function renderTerm(){
+  const ts=todayStamp();
+  const specials=data.days.filter(d=>d.special&&d.date>=ts);
+  const groups=new Map();
+  for(const rec of data.days){
+    if(rec.date<ts)continue;
+    const k=weekKey(rec.date);
+    (groups.get(k)??groups.set(k,[]).get(k)).push(rec);
+  }
+  let html=`<div class="slab">Key dates</div><div class="kdlist">`+
+    (specials.length?specials.map(d=>{const ex=myExams(d.date);
+      const detail=ex.length?ex.map(e=>`${courseName(e.course)} ${fmt12(e.start)}`).join(" \u00b7 "):"";
+      return `<div class="kdrow ${d.special.kind==="EXAM"?"exam":d.special.kind==="HOL"?"hol":""}">
+      <span class="kdd">${fmtNice(d.date)}</span><span class="kdt">${d.special.text}${detail?`<br><span style="font-weight:600;font-size:.76rem;color:var(--mut)">${detail} \u00b7 ${EXAM_VENUE}</span>`:""}</span></div>`;}).join("")
+    :`<div class="nilday">No key dates left.</div>`)+`</div>`;
+  for(const[k,recs]of[...groups.entries()].sort((a,b)=>a[0]-b[0])){
+    html+=`<div class="slab">Week of ${new Date(k).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>`
+      +recs.map(r=>dayBlock(r)).join("");
+  }
+  $("tab-term").innerHTML=html;
+}
+
+/* ================= TAB: ME ================= */
+function attStats(){
+  const out=[];
+  for(const c of prefs.courses){
+    let total=0,held=0,missed=0;
+    for(const rec of data.days){
+      if(rec.special)continue;
+      for(const e of myEntries(rec)){
+        if(e.code!==c)continue;
+        total++;
+        if(isHeld(rec.date,e.slot)){held++;if(attendance[attKey(e)])missed++;}
+      }
+    }
+    if(!total)continue;
+    const attended=held-missed;
+    const pct=held?attended/held:1;
+    const maxMiss=Math.floor(total*(1-ATT_REQ));
+    out.push({code:c,total,held,missed,attended,pct,canMiss:maxMiss-missed});
+  }
+  return out;
+}
+function renderMe(){
+  const st=attStats();
+  $("tab-me").innerHTML=
+    `<div class="slab">Attendance · ${Math.round(ATT_REQ*100)}% needed</div><div class="pending" style="background:#EEF;border-color:#88A;color:#445;margin:0 0 .6rem"><span class="pd" style="background:#88A"></span>These are your own tapped records — not the official register. Always confirm the real attendance figure with your faculty.</div>
+    <div class="att">${st.map(s=>{
+      const p=Math.round(s.pct*100);
+      return `<div class="attrow" style="--cc:${courseColor(s.code)}">
+        <div class="top"><span class="an">${courseName(s.code)}</span><span class="ap ${s.canMiss<0?"bad":""}">${s.held?p+"%":"—"}</span></div>
+        <div class="abar"><i style="width:${s.held?p:100}%"></i></div>
+        <div class="as">${s.attended}/${s.held} attended · ${s.total-s.held} to go · ${
+          s.canMiss>=0?`can miss <b>${s.canMiss}</b> more`:`<span class="bad">over the limit by ${-s.canMiss}</span>`}</div>
+      </div>`;}).join("")}</div>
+    <div class="slab">Profile</div>
+    <div class="mecard"><div class="mt">Section & courses</div>
+      <div class="mv">Section ${prefs.section} · ${VENUE[prefs.section]} · ${prefs.courses.length} courses</div>
+      <div class="mebtns"><button class="mebtn alt" id="meEdit">Change section / electives</button></div></div>
+    <div class="mecard"><div class="mt">Account</div>
+      <div class="mv">${user?(roster?roster.name+" · "+roster.roll+" · ":"")+user.email:"Not signed in — data lives on this device only"}</div>
+      <div class="mebtns">${user?`<button class="mebtn alt" id="meLogout">Sign out</button>`:`<button class="mebtn" id="meLogin">Sign in with college Google</button>`}</div></div>
+    <div class="mecard"><div class="mt">Calendar</div>
+      <div class="mv">Export your classes, exams and holidays</div>
+      <div class="mebtns"><button class="mebtn" id="meIcs">Download .ics</button></div></div>
+    ${isApprover?`<div class="mecard" style="border-color:#C99700;border-width:2px">
+      <div class="mt">Approver \u00b7 post a manual change</div>
+      <div class="mv" style="margin-bottom:.6rem">For changes announced before the sheet is updated. Shown to everyone, clearly marked as manual.</div>
+      <input id="ovText" placeholder="e.g. INHRM moved to 6:00 PM" style="width:100%;padding:.6rem;border:1.5px solid var(--line);font-family:inherit;font-size:.85rem;margin-bottom:6px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input id="ovCourse" placeholder="Course" style="flex:1;min-width:0;padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem">
+        <select id="ovSection" style="padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem"><option value="">Both</option><option value="A">Sec A</option><option value="B">Sec B</option></select>
+        <select id="ovKind" style="padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem"><option value="move">Move</option><option value="cancel">Cancel</option><option value="add">Add</option><option value="note">Note</option></select>
+      </div>
+      <input id="ovDate" type="date" style="padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem;margin-bottom:6px">
+      <button class="mebtn" id="ovAddBtn" style="width:100%">Publish manual change</button></div>`:""}
+    <div class="mecard"><div class="mt">Official source</div>
+      <div class="mv">This app mirrors the official class schedule. Open it anytime to cross-check.</div>
+      <div class="mebtns"><a class="mebtn alt" href="${SHEET_VIEW_URL}" target="_blank" rel="noopener">↗ Open official sheet</a></div></div>
+    <div class="mecard"><div class="mt">Data</div>
+      <div class="mv">${fetchedAt?"Synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—"} · auto-updates from the college sheet · BUILD v5.5</div></div><div class="mecard" style="opacity:.85"><div class="mt">About</div><div class="mv" style="font-weight:600;color:var(--mut)">A student-built tool for the MBA-HRM 2025–27 batch. <strong>Not an official XIM University application.</strong> The schedule mirrors the official sheet; if anything conflicts, the official sheet and your faculty are the final word.</div></div>`;
+  const oab=$("ovAddBtn"); if(oab)oab.addEventListener("click",submitOverride);
+  $("meEdit").addEventListener("click",()=>renderSetup());
+  const lo=$("meLogout"),li=$("meLogin");
+  if(lo)lo.addEventListener("click",logout);
+  if(li)li.addEventListener("click",loginGoogle);
+  $("meIcs").addEventListener("click",downloadICS);
+}
+
+/* ================= TABS ================= */
+function renderTab(){
+  if(!data||!prefs)return;
+  ["today","week","term","me"].forEach(t=>$("tab-"+t).classList.toggle("hide",t!==curTab));
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("on",b.dataset.tab===curTab));
+  if(curTab==="today")renderToday();
+  if(curTab==="week")renderWeek();
+  if(curTab==="term")renderTerm();
+  if(curTab==="me")renderMe();
+}
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{curTab=b.dataset.tab;if(b.dataset.tab==="week")weekOffset=0;renderTab();}));
+function renderMain(){show("mainView");renderTab();}
+
+/* attendance marking via event delegation */
+$("mainView").addEventListener("click",ev=>{
+  const el=ev.target.closest("[data-att]");
+  if(!el)return;
+  const k=el.dataset.att;
+  if(attendance[k])delete attendance[k];else attendance[k]=1;
+  sSet("tt-att",attendance);saveCloud(true);
+  renderTab();
+});
+
+/* ================= SETUP ================= */
+let draft={section:null,courses:new Set()};
+function renderSetup(){
+  draft.section=prefs?.section||roster?.section||null;
+  const fromRoster=roster&&!prefs;
+  draft.courses=new Set(prefs?.courses||(roster?roster.courses:data.courses.filter(c=>c.type==="Core").map(c=>c.code)));
+  $("setupBanner").innerHTML=roster?`<div class="roster"><b>Found you: ${roster.name} · ${roster.roll}</b>
+    <span>Section ${roster.section||"?"} and your ${roster.courses.length} courses are loaded from the official enrollment list. Edit below if anything looks wrong.</span></div>`:"";
+  $("setupHint").classList.toggle("hide",!!roster);
+  document.querySelectorAll(".seg").forEach(b=>b.classList.toggle("on",b.dataset.sec===draft.section));
+  $("courseList").innerHTML=data.courses.map(c=>{
+    const on=draft.courses.has(c.code);
+    return `<button class="crs ${on?"on":""}" style="--cc:${courseColor(c.code)}" data-code="${c.code}" ${c.type==="Core"?'data-core="1"':""}>
+      <span class="box">${on?"✓":""}</span>
+      <span><span class="cn">${c.name}</span><br><span class="cf">${c.code}${c.faculty?" · "+c.faculty:""}</span></span>
+      ${c.type==="Core"?'<span class="badge">CORE</span>':""}</button>`;
+  }).join("");
+  $("courseList").querySelectorAll(".crs").forEach(b=>b.addEventListener("click",()=>{
+    if(b.dataset.core){toast("Core courses are always included");return;}
+    const code=b.dataset.code;
+    draft.courses.has(code)?draft.courses.delete(code):draft.courses.add(code);
+    b.classList.toggle("on");b.querySelector(".box").textContent=draft.courses.has(code)?"✓":"";
+    validate();
+  }));
+  validate();show("setupView");
+}
+function validate(){$("saveBtn").disabled=!(draft.section&&draft.courses.size>0);}
+document.querySelectorAll(".seg").forEach(b=>b.addEventListener("click",()=>{
+  draft.section=b.dataset.sec;
+  document.querySelectorAll(".seg").forEach(x=>x.classList.toggle("on",x===b));
+  validate();
+}));
+$("saveBtn").addEventListener("click",()=>{
+  prefs={section:draft.section,courses:[...draft.courses]};
+  sSet("tt-prefs",prefs);saveCloud();curTab="today";renderMain();
+});
+
+/* ================= ICS ================= */
+function icsEsc(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,");}
+function pad(n){return String(n).padStart(2,"0");}
+function icsDT(t,hm){const d=new Date(t);return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${hm.replace(":","")}00`;}
+function icsDate(t,plus){const d=new Date(t+(plus?86400000:0));return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;}
+async function submitOverride(){
+  const text=$("ovText").value.trim();
+  if(!text){toast("Enter the change");return;}
+  let dt=$("ovDate").value;
+  if(!dt){const t=new Date();dt=new Date(t.getTime()-t.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+  const ok=await addOverride({for_date:dt,section:$("ovSection").value||null,
+    course:($("ovCourse").value.trim().toUpperCase())||null,kind:$("ovKind").value,text:text});
+  if(ok){$("ovText").value="";$("ovCourse").value="";renderTab();}
+}
+function downloadICS(){
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//XIM Term-IV Timetable//EN","CALSCALE:GREGORIAN"];
+  for(const rec of data.days){
+    if(rec.special){
+      L.push("BEGIN:VEVENT",`UID:sp-${rec.date}@xim-tt`,
+        `DTSTART;VALUE=DATE:${icsDate(rec.date)}`,`DTEND;VALUE=DATE:${icsDate(rec.date,1)}`,
+        `SUMMARY:${icsEsc(rec.special.text)}`,"END:VEVENT");
+      continue;
+    }
+    for(const e of myEntries(rec)){
+      const[a,b]=SLOTS[e.slot];
+      L.push("BEGIN:VEVENT",`UID:${e.code}-${e.session}-${rec.date}-${e.slot}@xim-tt`,
+        `DTSTART:${icsDT(rec.date,a)}`,`DTEND:${icsDT(rec.date,b)}`,
+        `SUMMARY:${icsEsc(courseName(e.code)+(e.session?" · S"+e.session:""))}`,
+        `LOCATION:${icsEsc((VENUE[e.section||prefs.section]||"")+", IC Building, XIM")}`,
+        `DESCRIPTION:${icsEsc(e.code+(courseFac(e.code)?" · "+courseFac(e.code):""))}`,"END:VEVENT");
+    }
+  }
+  for(const e of EXAMS){
+    if(prefs && !prefs.courses.includes(e.course)) continue;
+    const [y,mo,dd]=e.date.split("-");
+    const stamp=`${y}${mo}${dd}`;
+    L.push("BEGIN:VEVENT",`UID:exam-${e.course}-${e.date}@xim-tt`,
+      `DTSTART:${stamp}T${e.start.replace(":","")}00`,
+      `SUMMARY:${icsEsc((e.phase?e.phase+" EXAM":"EXAM")+" \u00b7 "+courseName(e.course))}`,
+      `LOCATION:${icsEsc((e.phase==="End-Term"?"Venue TBA":EXAM_VENUE)+", XIM University")}`,
+      `DESCRIPTION:${icsEsc((e.phase||"")+" Exam \u00b7 "+e.course+" \u00b7 "+e.faculty)}`,
+      "END:VEVENT");
+  }
+  L.push("END:VCALENDAR");
+  const blob=new Blob([L.join("\r\n")],{type:"text/calendar;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=`Term4-Sec${prefs.section}.ics`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast("Downloaded — import into Google or Apple Calendar");
+}
+
+/* ================= DIFF DETECTION ================= */
+function snapEntries(d){
+  const m={};
+  for(const rec of d.days){ if(rec.special)continue;
+    for(const sl of rec.slots)for(const e of sl.entries)
+      m[e.code+"|"+(e.section||"")+"|"+e.session]={date:rec.date,slot:sl.slot};
+  }
+  return m;
+}
+function fmtSlotTime(s){return SLOTS[s]?SLOTS[s][0].replace(/^0/,""):"?";}
+function computeDiff(oldSnap,fresh,includeAll){
+  const ns=snapEntries(fresh),items=[];
+  // approver review must cover ALL courses/sections, not just the viewer's own
+  const rel=k=>{
+    if(includeAll)return true;          // approver sees everything
+    if(!prefs)return true;
+    const p=k.split("|"), c=p[0], sec=p[1];
+    if(!prefs.courses.includes(c))return false;              // not my course
+    if(sec && sec!=="A&B" && sec!==prefs.section)return false; // other section only
+    return true;
+  };
+  for(const k in ns){
+    if(!rel(k))continue;
+    const[c,sec,sess]=k.split("|");
+    const lbl=`${c} S${sess}${sec?" ("+sec+")":""}`;
+    if(!(k in oldSnap))items.push(`Added: ${lbl} · ${fmtNice(ns[k].date)} ${fmtSlotTime(ns[k].slot)}`);
+    else{
+      const o=oldSnap[k],n=ns[k];
+      if(o.date!==n.date||o.slot!==n.slot)
+        items.push(`${lbl}: ${fmtNice(o.date)} ${fmtSlotTime(o.slot)} → ${fmtNice(n.date)} ${fmtSlotTime(n.slot)}`);
+    }
+  }
+  for(const k in oldSnap){
+    if(!rel(k)||k in ns)continue;
+    const[c,sec,sess]=k.split("|");
+    items.push(`Removed: ${c} S${sess}${sec?" ("+sec+")":""} · was ${fmtNice(oldSnap[k].date)}`);
+  }
+  return items;
+}
+
+/* ================= SYNC & BOOT ================= */
+async function syncNow(silent){
+  if(syncing)return;syncing=true;$("refreshBtn").classList.add("spin");
+  if(!silent)setSync("stale","Syncing…");
+  try{
+    const csv=await fetchCSV();
+    const h=hash(csv),changed=lastCsvHash!==null&&h!==lastCsvHash;
+    const fresh=parseSchedule(csv);
+    if(!fresh.days.length)throw new Error("No schedule rows found");
+    applySpans(fresh);
+    if(changed){
+      const prev=sGet("tt-snap");
+      let items=[];
+      if(prev){
+        items=computeDiff(prev,fresh);
+        if(items.length){pendingDiff={at:Date.now(),items};sSet("tt-diff",pendingDiff);}
+      }
+      // don't nag people whose own classes didn't change
+      if(items.length||isApprover)toast("Schedule updated from the sheet");
+    }
+    lastCsvHash=h;data=fresh;fetchedAt=Date.now();
+    sSet("tt-cache",{fetchedAt,csvHash:h,data});
+    sSet("tt-snap",snapEntries(fresh));
+    await loadStaging();
+    await loadOverrides();
+    if(stagingCsv){
+      const sd=parseSchedule(stagingCsv);
+      stagingDiff=computeDiff(snapEntries(data),sd,isApprover);
+    }
+    const pendingLbl = (stagingDiff&&stagingDiff.length)?" · update pending":"";
+    setSync("","Synced "+new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})+" · live"+pendingLbl);
+    if(prefs&&!$("mainView").classList.contains("hide"))renderTab();
+    if(!$("setupView").classList.contains("hide"))renderSetup();
+    return true;
+  }catch(e){
+    if(silent)setSync("err","Sync failed — showing last saved copy");
+    else throw e;
+  }finally{syncing=false;$("refreshBtn").classList.remove("spin");}
+}
+async function boot(){
+  initSB();await checkAuth();
+  prefs=sGet("tt-prefs");
+  attendance=sGet("tt-att")||{};
+  pendingDiff=sGet("tt-diff")||null;
+  if(user){await loadCloud();await loadRoster();await checkApprover();}
+  if(user&&roster&&roster.section&&!prefs){    // zero-tap onboarding
+    prefs={section:roster.section,courses:roster.courses.slice()};
+    sSet("tt-prefs",prefs);saveCloud(true);
+    setTimeout(()=>toast(`Set up automatically: ${roster.name} · Sec ${roster.section}`),600);
+  }
+  const cache=sGet("tt-cache");
+  if(cache&&cache.data){
+    data=cache.data;fetchedAt=cache.fetchedAt;lastCsvHash=cache.csvHash??null;
+    applySpans(data);
+    if(!sGet("tt-snap"))sSet("tt-snap",snapEntries(data));
+    loadOverrides().then(()=>{if(!$("mainView").classList.contains("hide"))renderTab();});
+    setSync("stale","Last synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}));
+    prefs?renderMain():(user?renderSetup():show("loginView"));
+    syncNow(true);
+  }else{
+    show("loadingView");
+    try{await syncNow(false);prefs?renderMain():(user?renderSetup():show("loginView"));}
+    catch(e){
+      $("errorMsg").textContent=(e.message||"Unknown error");
+      setSync("err","Not connected");show("errorView");
+    }
+  }
+  setInterval(()=>syncNow(true),POLL_MS);
+  setInterval(()=>{if(curTab==="today"&&data&&prefs&&!$("mainView").classList.contains("hide"))renderToday();},60000); // live countdown
+}
+$("refreshBtn").addEventListener("click",async()=>{
+  try{await syncNow(false);toast("In sync with the sheet");}
+  catch(e){toast("Sync failed: "+(e.message||"error"));setSync("err","Sync failed");}
+});
+$("retryBtn").addEventListener("click",()=>{show("loadingView");boot();});
+$("googleBtn").addEventListener("click",loginGoogle);
+$("skipBtn").addEventListener("click",()=>{ if(data)renderSetup(); });
+(function(){var a=document.getElementById("officialLink");if(a)a.href=SHEET_VIEW_URL;})();
+boot();
+</script>
+</body>
+</html>
