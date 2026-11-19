@@ -24,13 +24,21 @@ self.addEventListener("push", e => {
   try { if (e.data) d = { ...d, ...e.data.json() }; } catch (_) {
     try { d.body = e.data.text(); } catch (_) {}
   }
+  // Web Push has no custom-sound option on Android Chrome — the alert tone comes
+  // from the OS notification channel. What the page CAN do is make sure the
+  // notification is not treated as a silent update: silent:false keeps the
+  // channel's tone, vibrate gives a physical cue even on mute, and renotify
+  // re-alerts when a second change replaces the first under the same tag.
   e.waitUntil(self.registration.showNotification(d.title, {
     body: d.body,
     icon: "./icon-192.png",
     badge: "./icon-192.png",
-    // same tag => a second change replaces the first rather than stacking
     tag: "tt-change",
     renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200],
+    requireInteraction: true,   // a moved class shouldn't vanish before it's seen
+    timestamp: Date.now(),
     data: { url: d.url || "/" }
   }));
 });

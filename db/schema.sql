@@ -244,23 +244,38 @@ revoke all on function public.push_staging(text,text,int) from public;
 grant execute on function public.push_staging(text,text,int) to anon, authenticated;
 
 
--- Called from the app by an approver. Identity comes from the caller's
--- JWT, never from a parameter, so it cannot be spoofed client-side.
+-- Called from the app by an approver to release a held update. Identity comes
+-- from the caller's JWT, never from a parameter, so it cannot be spoofed.
+--
+-- It must also write a publish_log row: that row is what fires the webhook that
+-- sends notifications. Without it an approved change went live silently, which
+-- is exactly what happened to five real changes on 19 Nov 2026.
 create or replace function public.approve_staging(p_row int default 1)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_roll text := upper(split_part(coalesce(auth.jwt() ->> 'email',''),'@',1));
+declare
+  v_roll text := upper(split_part(coalesce(auth.jwt() ->> 'email',''),'@',1));
+  v_old  text;
+  v_new  text;
 begin
-  if not public.is_xim_email() then
-    raise exception 'college account required';
-  end if;
+  if not public.is_xim_email() then raise exception 'college account required'; end if;
   if not exists (select 1 from public.approvers where roll = v_roll) then
     raise exception 'not an approver';
   end if;
+
+  select csv into v_old from public.timetable_csv     where id = p_row;
+  select csv into v_new from public.timetable_staging where id = p_row;
+  if v_new is null then raise exception 'nothing staged for row %', p_row; end if;
+
   insert into public.timetable_csv (id, csv, approved_at, approved_by)
-  select p_row, s.csv, now(), v_roll
-    from public.timetable_staging s where s.id = p_row
+  values (p_row, v_new, now(), v_roll)
   on conflict (id) do update
     set csv = excluded.csv, approved_at = now(), approved_by = excluded.approved_by;
+
+  -- only log an actual change, so re-clicking Publish doesn't re-notify
+  if v_old is distinct from v_new then
+    insert into public.publish_log (term, mode, reason, csv_before, csv_after)
+    values (p_row, 'manual', 'approved by ' || v_roll, v_old, v_new);
+  end if;
 end; $$;
 revoke all on function public.approve_staging(int) from public;
 grant execute on function public.approve_staging(int) to authenticated;
