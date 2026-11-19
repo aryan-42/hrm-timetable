@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# scratch
+node_modules/
+*.log
+*.tmp
+work.html
+
+# never commit: secrets, or roster data mapping roll numbers to electives
+.env
+.env.*
+enrollment*.json
+enrollment*.sql
+*term*-setup.sql
+*_students*.xlsx
+Course_wise_Students*

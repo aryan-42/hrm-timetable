@@ -1,81 +1,112 @@
-# XIM Term-IV Timetable
+# HRM Timetable
 
 A live, personalised class timetable for the MBA-HRM (2025–27) batch at XIM University.
-Students open one link, sign in with their college Google account, and see only their own
-section and electives — with attendance tracking, exam schedules, and calendar export.
+One link, sign in with a college Google account, and the app shows only that student's
+section and electives — with attendance tracking, exam schedules and calendar export.
 
 **Not an official XIM University application.** It mirrors the official class schedule;
 where the two differ, the official sheet and faculty are the final word.
+
+🔗 **Live:** https://hrm-t5-schedule.netlify.app
 
 ---
 
 ## What it does
 
-- **Zero-tap onboarding** — signing in reads the roll number from the college email and
-  loads that student's section and 5 courses from the official enrolment roster.
-- **Today / Week / Term / Me** — an "up next" countdown, week view, full term with key
-  dates, and a profile tab.
-- **Attendance tracker** — tap a past class to mark it missed; the app computes
-  attendance % and how many more sessions can be missed against the 80% rule.
-  *(Personal records, not the official register.)*
+- **Zero-tap onboarding** — signing in reads the roll number from the college email
+  address and loads that student's section and courses from the official roster.
+  No forms to fill.
+- **Today / Week / Term / Me** — an "up next" countdown, the current week, the full
+  term with key dates, and a profile tab.
+- **Attendance tracking** — tap a past class to mark it missed; the app computes the
+  percentage and how many more sessions can be missed against the 80% rule.
+  *Personal records, not the official register.*
 - **Exam schedules** — mid-term and end-term, filtered to each student's own papers,
-  with time, venue and faculty.
-- **Calendar export** — `.ics` of the student's classes, exams and holidays.
-- **Human-approved updates** — schedule changes are staged, reviewed by an approver,
-  then published to the batch.
+  with time, venue and invigilating faculty.
+- **Multi-term** — Term IV and Term V both configured; the app picks the active term
+  by date. Preferences and attendance are stored per term so they never collide.
+- **Human-approved updates** — schedule changes are staged and reviewed before the
+  batch sees them.
 - **Manual overrides** — for changes announced before the sheet is updated.
+- **Installable PWA** — works offline and opens fullscreen from the home screen.
+- **Calendar export** — `.ics` of the student's own classes, exams and holidays.
 
-## Architecture
+## How it works
 
 ```
-Official class schedule (Google Sheets, college-owned)
-        │  hourly, Apps Script on a college account
-        │  strips struck-through (cancelled) classes
-        ▼
-   timetable_staging ──── approver reviews the diff ───▶ timetable_csv (live)
+Official class schedule (Google Sheets, college-owned, one file per term)
         │
-   Supabase ── enrollment (roll → name, section, courses)
-             ── user_prefs (per-student prefs + attendance)
-             ── overrides  (manual, approver-posted)
+        │  Apps Script on a college account, every few hours.
+        │  Skips entirely when the sheet hasn't changed.
+        │  Strips struck-through (cancelled) classes before export.
         ▼
-   index.html  (single static file, hosted on Netlify)
+   timetable_staging ──── approver reviews the diff in-app ───▶ timetable_csv (live)
+        │
+   Supabase ── enrollment / enrollment_terms   roll → name, section, courses
+             ── user_prefs                     per-student, per-term settings
+             ── overrides                      manual, approver-posted
+        │
+        │  the app polls every 10 minutes and on open
+        ▼
+   index.html   (one static file, hosted on Netlify)
 ```
 
-No server to run. The site polls Supabase every 10 minutes; the sheet is pushed hourly.
+There is no server to run and no build step. The whole app is a single HTML file.
+
+### Why the Apps Script is the way it is
+
+The registrar maintains the schedule by hand, and cancels a class by **striking it
+through** rather than deleting it. Plain CSV export loses that formatting, so a
+cancelled class would still appear as live. The script reads the sheet's rich text and
+drops struck-through runs before building the CSV — but only for cells that actually
+contain a strikethrough, so dates and ordinary cells pass through untouched.
+
+Changes that the script *cannot* safely interpret — a class moved with an
+"against 2.2" note, or colour used to mean something — are why a human approves every
+update rather than it publishing automatically.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `index.html` | The entire app — HTML, CSS and JS in one file |
-| `timetable-data-bridge.gs` | Apps Script: reads the sheet, strips strikethrough, pushes to staging |
+| `sw.js`, `manifest.webmanifest`, `icon-*.png` | PWA shell, offline support, install icons |
+| `timetable-data-bridge.gs` | Apps Script: reads the sheets, strips strikethrough, pushes to staging |
 | `netlify.toml` | Hosting config, security headers, cache policy |
+| `db/schema.sql` | Database schema and RLS policies (reference; no student data) |
 
 ## Deploying
 
-Netlify auto-deploys on every push to `main`. To preview locally, open `index.html`
-directly or run `python3 -m http.server`.
+Netlify auto-deploys on every push to `main`. No build command; publish directory `.`.
+To preview locally, open `index.html` directly or run `python3 -m http.server`.
 
 ### Apps Script setup
-1. On the **college account**, go to script.google.com → New project → paste `timetable-data-bridge.gs`
+
+1. On the **college account**, go to script.google.com → New project → paste
+   `timetable-data-bridge.gs`
 2. Services (+) → add **Drive API** (identifier `Drive`)
-3. **Project Settings → Script Properties →** add key `PUSH_SECRET` with the secret value
-   (kept out of this repo on purpose — ask the maintainer)
-4. Run `pushStaging` once and authorise
-5. Triggers → `pushStaging`, time-driven, hourly
+3. Project Settings → **Script Properties** → add `PUSH_SECRET`
+   (the value is deliberately not in this repository)
+4. Run `forcePush` once and authorise
+5. Triggers → `pushStaging`, time-driven, every 4 hours
+
+`pushStaging` skips any term whose sheet is unmodified, so most runs finish in a
+second. `forcePush` ignores that check — use it after editing the script.
 
 ## Configuration
 
-The Supabase URL and anon key sit at the top of the `<script>` in `index.html`.
-The anon key is safe to publish — every table is protected by Row Level Security.
-The Apps Script push secret is **not** in this repo; it lives only on the college account.
+The Supabase project URL and anon key sit at the top of the `<script>` in `index.html`.
+The anon key is safe to publish: every table has Row Level Security, so the key grants
+nothing on its own. The Apps Script push secret is **not** in this repository.
 
-## Data & privacy
+Term dates, sheet IDs and course catalogues live in the `TERMS` and `COURSE_INFO`
+constants in `index.html`, and in `TERMS` in the Apps Script.
+
+## Data and privacy
 
 Only roll number, name, section and course codes are stored — no contact details.
-Enrolment rows are readable only by the student they belong to. Attendance is private
-to each student. The schedule is read-only to students; only an approver can publish
-changes.
+A student can read only their own enrolment row and only their own preferences.
+The schedule is read-only to students; publishing a change requires an approver.
 
 ---
 
