@@ -177,6 +177,16 @@ header h1::before{content:"";width:.62em;height:.62em;background:var(--red);disp
 .ovm{font-size:.68rem;font-weight:700;color:#7a5e00}
 .ovx{background:none;border:1px solid #C99700;color:#7a5e00;font-size:.62rem;font-weight:800;text-transform:uppercase;padding:.25rem .45rem;flex-shrink:0}
 
+/* approver override manager rows */
+.ovmgr{display:flex;flex-direction:column;gap:6px}
+.ovrow{display:flex;align-items:center;gap:.6rem;background:var(--bg);border:1.5px solid #C99700;padding:.5rem .6rem}
+.ovrow.stale{border-style:dashed;opacity:.72}
+.ovrd{flex-shrink:0;width:58px;font-weight:800;font-size:.72rem;line-height:1.15;color:#7a5e00}
+.ovrd small{display:block;font-size:.58rem;font-weight:800;text-transform:uppercase;opacity:.8}
+.ovrb{flex:1;min-width:0}
+.ovrt{font-weight:700;font-size:.82rem;overflow-wrap:anywhere}
+.ovrm{font-size:.64rem;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.02em;margin-top:1px}
+
 /* pending update note (students) */
 .pending{background:#FFF6E0;border:2px solid #C99700;padding:.6rem .9rem;margin:.6rem 0 0;font-size:.78rem;font-weight:700;color:#7a5e00;display:flex;align-items:center;gap:.5rem}
 .pending .pd{width:8px;height:8px;border-radius:50%;background:#C99700;flex-shrink:0}
@@ -239,7 +249,7 @@ header h1::before{content:"";width:.62em;height:.62em;background:var(--red);disp
   <header>
     <div>
       <h1 id="termTitle">Term <em>IV</em></h1>
-      <div class="sub">Timetable · MBA-HRM 2025–27 · XIM · BUILD v8.1</div>
+      <div class="sub">Timetable · MBA-HRM 2025–27 · XIM · BUILD v8.2</div>
     </div>
     <div class="hbtns">
       <button class="icon-btn" id="refreshBtn" title="Re-sync now">
@@ -401,6 +411,7 @@ let curTab="today";
 let keyDatesOpen=false;
 let isApprover=false, stagingCsv=null, stagingDiff=[];
 let overrides=[];
+let allOv=[];          // approver-only: every active override, past dates included
 const mem={};
 function sGet(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return mem[k]??null; } }
 function sSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} mem[k]=v; }
@@ -631,11 +642,22 @@ async function addOverride(o){
   if(error){toast("Failed: "+error.message);return false;}
   await loadOverrides(); toast("Override published to batch"); return true;
 }
+// loadOverrides() only fetches from today forward, so an override for a past date
+// stays active in the table but is invisible — and therefore un-removable. The
+// approver's manager list fetches them all so stale ones can actually be cleared.
+async function loadAllOverrides(){
+  allOv=[];
+  if(!sb||!isApprover)return;
+  try{
+    const {data:d}=await sb.from("overrides").select("*").eq("active",true).order("for_date",{ascending:false});
+    if(Array.isArray(d))allOv=d;
+  }catch(e){}
+}
 async function deactivateOverride(id){
   if(!sb||!isApprover)return;
   const {error}=await sb.from("overrides").update({active:false}).eq("id",id);
   if(error){toast("Failed: "+error.message);return;}
-  await loadOverrides(); renderTab();
+  await loadOverrides(); await loadAllOverrides(); toast("Override removed"); renderTab();
 }
 async function loadStaging(){
   stagingCsv=null; stagingDiff=[];
@@ -671,6 +693,8 @@ const courseName=c=>(data?.courses.find(x=>x.code===c)?.name)
 const courseFac=c=>(data?.courses.find(x=>x.code===c)?.faculty)
   || (TERM&&COURSE_INFO[TERM.id]&&COURSE_INFO[TERM.id][c]&&COURSE_INFO[TERM.id][c].faculty) || "";
 function todayStamp(){const t=new Date();t.setHours(0,0,0,0);return t.getTime();}
+function todayISO(){const t=new Date();return new Date(t.getTime()-t.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function nowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 function slotRange(n){const[a,b]=SLOTS[n];const f=t=>{const[x,y]=t.split(":");return +x*60+ +y;};return[f(a),f(b)];}
 function fmtNice(t){return new Date(t).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});}
@@ -964,12 +988,23 @@ function renderMe(){
         <select id="ovKind" style="padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem"><option value="move">Move</option><option value="cancel">Cancel</option><option value="add">Add</option><option value="note">Note</option></select>
       </div>
       <input id="ovDate" type="date" style="padding:.5rem;border:1.5px solid var(--line);font-family:inherit;font-size:.8rem;margin-bottom:6px">
-      <button class="mebtn" id="ovAddBtn" style="width:100%">Publish manual change</button></div>`:""}
+      <button class="mebtn" id="ovAddBtn" style="width:100%">Publish manual change</button></div>
+    <div class="mecard" style="border-color:#C99700;border-width:2px">
+      <div class="mt">Approver · active manual overrides</div>
+      ${allOv.length?`<div class="mv" style="margin-bottom:.6rem">${allOv.length} active. Overrides never expire on their own — remove one once the sheet catches up, or it keeps showing.</div>
+      <div class="ovmgr">${allOv.map(o=>{
+        const stale=o.for_date<todayISO();
+        return `<div class="ovrow${stale?" stale":""}">
+          <div class="ovrd">${new Date(o.for_date+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})}${stale?"<small>past</small>":""}</div>
+          <div class="ovrb"><div class="ovrt">${esc(o.text)}</div>
+            <div class="ovrm">${o.kind||"note"}${o.course?" · "+esc(o.course):" · all courses"}${o.section?" · Sec "+esc(o.section):" · both sections"}${o.created_by?" · "+esc(o.created_by):""}</div></div>
+          <button class="ovx" data-ovdel="${o.id}">Remove</button></div>`;}).join("")}</div>`
+      :`<div class="mv">No active overrides. Anything you publish above appears here so it can be removed later.</div>`}</div>`:""}
     <div class="mecard"><div class="mt">Official source</div>
       <div class="mv">This app mirrors the official class schedule. Open it anytime to cross-check.</div>
       <div class="mebtns"><a class="mebtn alt" href="${SHEET_VIEW_URL}" target="_blank" rel="noopener">↗ Open official sheet</a></div></div>
     <div class="mecard"><div class="mt">Data</div>
-      <div class="mv">${fetchedAt?"Synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—"} · auto-updates from the college sheet · BUILD v8.1</div></div><div class="mecard" style="opacity:.85"><div class="mt">About</div><div class="mv" style="font-weight:600;color:var(--mut)">A student-built tool for the MBA-HRM 2025–27 batch. <strong>Not an official XIM University application.</strong> The schedule mirrors the official sheet; if anything conflicts, the official sheet and your faculty are the final word.</div></div>`;
+      <div class="mv">${fetchedAt?"Synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—"} · auto-updates from the college sheet · BUILD v8.2</div></div><div class="mecard" style="opacity:.85"><div class="mt">About</div><div class="mv" style="font-weight:600;color:var(--mut)">A student-built tool for the MBA-HRM 2025–27 batch. <strong>Not an official XIM University application.</strong> The schedule mirrors the official sheet; if anything conflicts, the official sheet and your faculty are the final word.</div></div>`;
   const oab=$("ovAddBtn"); if(oab)oab.addEventListener("click",submitOverride);
   $("meEdit").addEventListener("click",()=>renderSetup());
   const lo=$("meLogout"),li=$("meLogin");
@@ -993,6 +1028,8 @@ function renderMain(){show("mainView");renderTab();}
 
 /* attendance marking via event delegation */
 $("mainView").addEventListener("click",ev=>{
+  const od=ev.target.closest("[data-ovdel]");
+  if(od){deactivateOverride(od.dataset.ovdel);return;}
   const el=ev.target.closest("[data-att]");
   if(!el)return;
   const k=el.dataset.att;
@@ -1155,6 +1192,7 @@ async function syncNow(silent){
     sSet("tt-snap-t"+TERM.id,snapEntries(fresh));
     await loadStaging();
     await loadOverrides();
+    await loadAllOverrides();
     if(stagingCsv){
       const sd=parseSchedule(stagingCsv);
       stagingDiff=computeDiff(snapEntries(data),sd,isApprover);
@@ -1202,7 +1240,7 @@ async function boot(){
     data=cache.data;fetchedAt=cache.fetchedAt;lastCsvHash=cache.csvHash??null;
     applySpans(data);
     if(!sGet("tt-snap-t"+TERM.id))sSet("tt-snap-t"+TERM.id,snapEntries(data));
-    loadOverrides().then(()=>{if(!$("mainView").classList.contains("hide"))renderTab();});
+    loadOverrides().then(loadAllOverrides).then(()=>{if(!$("mainView").classList.contains("hide"))renderTab();});
     setSync("stale","Last synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}));
     prefs?renderMain():(user?renderSetup():show("loginView"));
     syncNow(true);
