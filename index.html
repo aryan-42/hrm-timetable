@@ -249,7 +249,7 @@ header h1::before{content:"";width:.62em;height:.62em;background:var(--red);disp
   <header>
     <div>
       <h1 id="termTitle">Term <em>IV</em></h1>
-      <div class="sub">Timetable · MBA-HRM 2025–27 · XIM · BUILD v8.2</div>
+      <div class="sub">Timetable · MBA-HRM 2025–27 · XIM · BUILD v8.3</div>
     </div>
     <div class="hbtns">
       <button class="icon-btn" id="refreshBtn" title="Re-sync now">
@@ -674,6 +674,77 @@ async function approveStaging(){
   toast("Published to the batch");
   await syncNow(false);
 }
+/* ================= PUSH NOTIFICATIONS ================= */
+// Public half of the VAPID pair. Safe to publish — it only lets the browser
+// verify that a push really came from this server. The private half lives in
+// a Supabase secret.
+const VAPID_PUBLIC="BHOkwPZXBzEd6uqY9B8NU6sy47UIIFaOYa4sGgFkBG9sd6xqQ7RycXJLDFz_e-C6-AZqqONaeZFF4B0n7IVRx-s";
+let pushReady=false;
+
+const isIOS=()=>/iP(hone|ad|od)/.test(navigator.userAgent)
+  || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+const isStandalone=()=>window.matchMedia("(display-mode: standalone)").matches
+  || window.navigator.standalone===true;
+
+function b64ToU8(s){
+  const pad="=".repeat((4-s.length%4)%4);
+  const raw=atob((s+pad).replace(/-/g,"+").replace(/_/g,"/"));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+// Why a state machine rather than a plain on/off: on iPhone, Notification
+// simply does not exist in a Safari tab. The app has to be installed to the
+// home screen first (iOS 16.4+), and saying so is more useful than a button
+// that silently fails.
+function pushState(){
+  if(!("serviceWorker" in navigator))return "unsupported";
+  if(!("PushManager" in window)||!("Notification" in window))
+    return (isIOS()&&!isStandalone())?"ios-needs-install":"unsupported";
+  if(!user)return "signin";
+  if(Notification.permission==="denied")return "blocked";
+  return pushReady?"on":"off";
+}
+
+async function refreshPushState(){
+  pushReady=false;
+  try{
+    if(!("serviceWorker" in navigator)||!("PushManager" in window))return;
+    const reg=await navigator.serviceWorker.ready;
+    pushReady=!!(await reg.pushManager.getSubscription());
+  }catch(e){}
+}
+
+async function enablePush(){
+  if(!user){toast("Sign in first");return;}
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted"){toast(perm==="denied"?"Notifications blocked in browser settings":"Not enabled");renderTab();return;}
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC)});
+    const j=sub.toJSON();
+    const roll=(user.email||"").split("@")[0].toUpperCase();
+    const {error}=await sb.from("push_subscriptions").upsert({
+      endpoint:sub.endpoint, roll, p256dh:j.keys.p256dh, auth:j.keys.auth,
+      user_agent:navigator.userAgent.slice(0,200)
+    },{onConflict:"endpoint"});
+    if(error){toast("Couldn't save: "+error.message);return;}
+    pushReady=true; toast("Notifications on for your subjects"); renderTab();
+  }catch(e){ toast("Couldn't enable: "+(e.message||e)); }
+}
+
+async function disablePush(){
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(sub){
+      if(sb) await sb.from("push_subscriptions").delete().eq("endpoint",sub.endpoint);
+      await sub.unsubscribe();
+    }
+  }catch(e){}
+  pushReady=false; toast("Notifications off"); renderTab();
+}
+
 async function loginGoogle(){
   if(!sb){toast("Sign-in isn't configured yet");return;}
   const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}});
@@ -1000,12 +1071,29 @@ function renderMe(){
             <div class="ovrm">${o.kind||"note"}${o.course?" · "+esc(o.course):" · all courses"}${o.section?" · Sec "+esc(o.section):" · both sections"}${o.created_by?" · "+esc(o.created_by):""}</div></div>
           <button class="ovx" data-ovdel="${o.id}">Remove</button></div>`;}).join("")}</div>`
       :`<div class="mv">No active overrides. Anything you publish above appears here so it can be removed later.</div>`}</div>`:""}
+    ${(()=>{const st=pushState();
+      const copy={
+        on:          ["Notifications are on","You'll get a push when one of <em>your</em> subjects moves, is cancelled or is added. Changes to other courses stay silent."],
+        off:         ["Get told when your schedule changes","A push the moment the sheet changes one of your own classes — no need to keep the app open."],
+        signin:      ["Sign in to turn on notifications","Notifications are matched to your courses and section, so the app needs to know who you are."],
+        blocked:     ["Notifications are blocked","Your browser is refusing them for this site. Re-allow notifications in site settings, then come back."],
+        "ios-needs-install":["Install the app to get notifications","On iPhone, notifications only work once the app is on your home screen — Share → Add to Home Screen, then open it from there. Needs iOS 16.4 or later."],
+        unsupported: ["Notifications aren't supported here","This browser can't receive them. The in-app banner still shows changes when you open the app."]
+      }[st];
+      return `<div class="mecard"><div class="mt">${copy[0]}</div>
+        <div class="mv">${copy[1]}</div>
+        ${st==="on"?`<div class="mebtns"><button class="mebtn alt" id="pushOff">Turn off</button></div>`:""}
+        ${st==="off"?`<div class="mebtns"><button class="mebtn" id="pushOn">Turn on notifications</button></div>`:""}
+      </div>`;})()}
     <div class="mecard"><div class="mt">Official source</div>
       <div class="mv">This app mirrors the official class schedule. Open it anytime to cross-check.</div>
       <div class="mebtns"><a class="mebtn alt" href="${SHEET_VIEW_URL}" target="_blank" rel="noopener">↗ Open official sheet</a></div></div>
     <div class="mecard"><div class="mt">Data</div>
-      <div class="mv">${fetchedAt?"Synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—"} · auto-updates from the college sheet · BUILD v8.2</div></div><div class="mecard" style="opacity:.85"><div class="mt">About</div><div class="mv" style="font-weight:600;color:var(--mut)">A student-built tool for the MBA-HRM 2025–27 batch. <strong>Not an official XIM University application.</strong> The schedule mirrors the official sheet; if anything conflicts, the official sheet and your faculty are the final word.</div></div>`;
+      <div class="mv">${fetchedAt?"Synced "+new Date(fetchedAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—"} · auto-updates from the college sheet · BUILD v8.3</div></div><div class="mecard" style="opacity:.85"><div class="mt">About</div><div class="mv" style="font-weight:600;color:var(--mut)">A student-built tool for the MBA-HRM 2025–27 batch. <strong>Not an official XIM University application.</strong> The schedule mirrors the official sheet; if anything conflicts, the official sheet and your faculty are the final word.</div></div>`;
   const oab=$("ovAddBtn"); if(oab)oab.addEventListener("click",submitOverride);
+  const pOn=$("pushOn"),pOff=$("pushOff");
+  if(pOn)pOn.addEventListener("click",enablePush);
+  if(pOff)pOff.addEventListener("click",disablePush);
   $("meEdit").addEventListener("click",()=>renderSetup());
   const lo=$("meLogout"),li=$("meLogin");
   if(lo)lo.addEventListener("click",logout);
@@ -1224,7 +1312,7 @@ async function boot(){
   prefs=sGet("tt-prefs-t"+TERM.id) || null;
   attendance=sGet("tt-att-t"+TERM.id)||{};
   pendingDiff=sGet("tt-diff")||null;
-  if(user){await loadCloud();await loadRoster();await checkApprover();}
+  if(user){await loadCloud();await loadRoster();await checkApprover();await refreshPushState();}
   // discard prefs left over from another term (courses that don't exist here)
   if(prefs&&roster&&roster.courses&&roster.courses.length){
     const valid=prefs.courses.filter(c=>roster.courses.includes(c));

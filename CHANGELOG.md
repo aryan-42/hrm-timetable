@@ -1,5 +1,19 @@
 # Changelog
 
+## v8.3
+- **Changes now go live automatically.** The Apps Script push publishes straight to
+  the batch instead of waiting for an approver. A sanity check runs first and holds
+  the update only when the parsed sheet looks structurally broken — dates
+  disappearing, most classes vanishing, or a truncated export. Growth is never
+  blocked; only losses are treated as suspicious. Every push is recorded in
+  `publish_log` with the decision and the reason.
+- **Push notifications.** When a published change touches a student's own course
+  *and* section, they get a push — matched per student, so nobody is told about
+  courses they don't take. Opt in from the Me tab.
+  On iPhone this needs iOS 16.4+ and the app installed to the home screen;
+  the Me tab says so rather than offering a button that can't work.
+- Approval remains available for held updates, and the review panel is unchanged.
+
 ## v8.2
 - Overrides manager in the Me tab: approvers see every active manual override in one
   place and can remove stale ones. Previously an override for a past date stayed

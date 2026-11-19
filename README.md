@@ -25,8 +25,12 @@ where the two differ, the official sheet and faculty are the final word.
   with time, venue and invigilating faculty.
 - **Multi-term** — Term IV and Term V both configured; the app picks the active term
   by date. Preferences and attendance are stored per term so they never collide.
-- **Human-approved updates** — schedule changes are staged and reviewed before the
-  batch sees them.
+- **Automatic publishing** — a change in the sheet reaches the batch on the next
+  sync, with no human step. A sanity check holds the update for an approver only
+  when the parsed sheet looks broken.
+- **Push notifications** — students are pushed the changes that affect their own
+  courses and section. *iPhone: needs iOS 16.4+ and the app installed to the home
+  screen.*
 - **Manual overrides** — for changes announced before the sheet is updated.
 - **Installable PWA** — works offline and opens fullscreen from the home screen.
 - **Calendar export** — `.ics` of the student's own classes, exams and holidays.
@@ -40,7 +44,13 @@ Official class schedule (Google Sheets, college-owned, one file per term)
         │  Skips entirely when the sheet hasn't changed.
         │  Strips struck-through (cancelled) classes before export.
         ▼
-   timetable_staging ──── approver reviews the diff in-app ───▶ timetable_csv (live)
+   timetable_staging ──┬── sanity check passes ──────────────▶ timetable_csv (live)
+        │              │                                             │
+        │              └── looks broken ─▶ held for approver         │
+        │                                                            ▼
+        │                                        notify-changes (Edge Function)
+        │                                        diffs old vs new, web-pushes
+        │                                        only the affected students
         │
    Supabase ── enrollment / enrollment_terms   roll → name, section, courses
              ── user_prefs                     per-student, per-term settings
@@ -61,9 +71,15 @@ cancelled class would still appear as live. The script reads the sheet's rich te
 drops struck-through runs before building the CSV — but only for cells that actually
 contain a strikethrough, so dates and ordinary cells pass through untouched.
 
-Changes that the script *cannot* safely interpret — a class moved with an
-"against 2.2" note, or colour used to mean something — are why a human approves every
-update rather than it publishing automatically.
+Updates publish automatically, but `push_staging` validates the parsed sheet first
+and holds anything that looks structurally wrong. The check exists because of a real
+failure: a v5.0 version of this script ran every cell through rich-text extraction
+and blanked the date column on all 83 rows, producing 152 phantom changes. Only
+losses are suspicious — the registrar adding classes is routine — so the gates are
+a drop in date cells below 80% of the previous version, a drop in class tokens below
+70%, or a CSV too short to be a real export.
+
+A held update still appears in the approver's review panel, exactly as before.
 
 ## Files
 
@@ -74,6 +90,7 @@ update rather than it publishing automatically.
 | `timetable-data-bridge.gs` | Apps Script: reads the sheets, strips strikethrough, pushes to staging |
 | `netlify.toml` | Hosting config, security headers, cache policy |
 | `db/schema.sql` | Database schema and RLS policies (reference; no student data) |
+| `supabase/functions/notify-changes/` | Edge Function: diffs a published change and web-pushes affected students |
 
 ## Deploying
 
@@ -92,6 +109,20 @@ To preview locally, open `index.html` directly or run `python3 -m http.server`.
 
 `pushStaging` skips any term whose sheet is unmodified, so most runs finish in a
 second. `forcePush` ignores that check — use it after editing the script.
+
+### Notification setup
+
+1. **Secret** — Edge Functions → Secrets → add `VAPID_JWK`, the JSON holding the
+   VAPID key pair. The public half is in `index.html` as `VAPID_PUBLIC` and is
+   meant to be public; the private half must only ever live in this secret.
+2. **Trigger** — Database → Webhooks → create a hook on `publish_log`, event
+   `INSERT`, type *Supabase Edge Functions*, function `notify-changes`, and use
+   "Add auth header with service key". Supabase supplies the key itself, so it
+   never has to be stored anywhere.
+
+The function is idempotent: it processes every published-but-unnotified row and
+stamps `notified_at` as it goes. A failed send therefore retries on the next
+publish instead of being lost, and a duplicate webhook delivery sends nothing twice.
 
 ## Configuration
 
