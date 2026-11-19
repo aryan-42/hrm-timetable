@@ -181,15 +181,64 @@ create policy "overrides_update" on public.overrides
 -- this repository — it lives in Supabase and in the Apps Script project's
 -- Script Properties. Replace the placeholder when provisioning a new
 -- environment, and never commit the real value.
+-- Called from the Apps Script on the college account. Writes the parsed sheet
+-- to staging, then decides for itself whether it is safe to publish.
+--
+-- Normal registrar edits publish immediately. A structurally broken diff is
+-- held for an approver instead. Only LOSSES are treated as suspicious: adding
+-- classes is routine, a sheet that suddenly loses its dates is not. This gate
+-- exists because a v5.0 Apps Script bug once blanked the date column on every
+-- row and produced 152 phantom changes.
 create or replace function public.push_staging(p_secret text, p_csv text, p_row int default 1)
-returns void language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_old text;
+  v_old_dates int := 0; v_new_dates int := 0;
+  v_old_tok   int := 0; v_new_tok   int := 0;
+  v_reason text := null;
+  v_mode   text;
 begin
   if p_secret <> '<PUSH_SECRET — set per environment, never commit>' then
     raise exception 'invalid secret';
   end if;
+
   insert into public.timetable_staging (id, csv, pushed_at)
   values (p_row, p_csv, now())
   on conflict (id) do update set csv = excluded.csv, pushed_at = now();
+
+  select csv into v_old from public.timetable_csv where id = p_row;
+
+  v_new_dates := (select count(*) from regexp_matches(coalesce(p_csv,''), '[0-9]{1,2}-[A-Za-z]{3}-[0-9]{2}', 'g'));
+  v_new_tok   := (select count(*) from regexp_matches(coalesce(p_csv,''), '[A-Z]{2,8}_[A-Za-z&]*[0-9]+', 'g'));
+  v_old_dates := (select count(*) from regexp_matches(coalesce(v_old,''), '[0-9]{1,2}-[A-Za-z]{3}-[0-9]{2}', 'g'));
+  v_old_tok   := (select count(*) from regexp_matches(coalesce(v_old,''), '[A-Z]{2,8}_[A-Za-z&]*[0-9]+', 'g'));
+
+  if p_csv is null or length(p_csv) < 500 then
+    v_reason := format('CSV too short (%s chars) — export probably failed', coalesce(length(p_csv),0));
+  elsif v_old_dates > 0 and v_new_dates < ceil(v_old_dates * 0.8) then
+    v_reason := format('date cells dropped %s -> %s', v_old_dates, v_new_dates);
+  elsif v_old_tok > 0 and v_new_tok < ceil(v_old_tok * 0.7) then
+    v_reason := format('class tokens dropped %s -> %s', v_old_tok, v_new_tok);
+  end if;
+
+  if v_reason is null then
+    insert into public.timetable_csv (id, csv, approved_at, approved_by)
+    values (p_row, p_csv, now(), 'auto')
+    on conflict (id) do update
+      set csv = excluded.csv, approved_at = now(), approved_by = 'auto';
+    v_mode := 'auto';
+  else
+    v_mode := 'held';
+  end if;
+
+  insert into public.publish_log (term, mode, reason, date_cells, class_tokens, csv_before, csv_after)
+  values (p_row, v_mode, v_reason, v_new_dates, v_new_tok,
+          case when v_mode = 'auto' then v_old  else null end,
+          case when v_mode = 'auto' then p_csv else null end);
+
+  return jsonb_build_object('mode', v_mode, 'reason', v_reason, 'term', p_row,
+    'date_cells', v_new_dates, 'class_tokens', v_new_tok,
+    'changed', (v_old is distinct from p_csv));
 end; $$;
 revoke all on function public.push_staging(text,text,int) from public;
 grant execute on function public.push_staging(text,text,int) to anon, authenticated;
@@ -215,3 +264,54 @@ begin
 end; $$;
 revoke all on function public.approve_staging(int) from public;
 grant execute on function public.approve_staging(int) to authenticated;
+
+
+
+-- ---------------------------------------------------------------------------
+-- Auto-publish audit trail. One row per Apps Script push, recording whether it
+-- went live or was held and why. csv_before/csv_after are kept for published
+-- rows so the notifier can diff them; notified_at stamps when pushes went out.
+-- ---------------------------------------------------------------------------
+create table if not exists public.publish_log (
+  id           bigserial primary key,
+  term         integer not null,
+  mode         text    not null check (mode in ('auto','held','manual')),
+  reason       text,
+  date_cells   integer,
+  class_tokens integer,
+  csv_before   text,
+  csv_after    text,
+  notified_at  timestamptz,
+  created_at   timestamptz not null default now()
+);
+create index if not exists publish_log_created_idx on public.publish_log (created_at desc);
+alter table public.publish_log enable row level security;
+
+create policy publish_log_read_approver on public.publish_log
+  for select to authenticated
+  using (exists (select 1 from public.approvers a
+                 where a.roll = upper(split_part(coalesce(auth.jwt() ->> 'email',''),'@',1))));
+
+
+-- ---------------------------------------------------------------------------
+-- Web Push subscriptions. One row per browser/device; a student may only ever
+-- see or change their own. The notify-changes Edge Function reads these with
+-- the service role.
+-- ---------------------------------------------------------------------------
+create table if not exists public.push_subscriptions (
+  endpoint   text primary key,
+  roll       text not null,
+  p256dh     text not null,
+  auth       text not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_ok_at timestamptz,
+  fail_count integer not null default 0
+);
+create index if not exists push_subs_roll_idx on public.push_subscriptions (roll);
+alter table public.push_subscriptions enable row level security;
+
+create policy push_subs_own on public.push_subscriptions
+  for all to authenticated
+  using      (roll = upper(split_part(coalesce(auth.jwt() ->> 'email',''),'@',1)))
+  with check (roll = upper(split_part(coalesce(auth.jwt() ->> 'email',''),'@',1)));

@@ -17,6 +17,37 @@ self.addEventListener("activate", e => {
   );
 });
 
+/* ---- Web Push: schedule changes ---- */
+
+self.addEventListener("push", e => {
+  let d = { title: "Timetable change", body: "Your schedule has been updated.", url: "/" };
+  try { if (e.data) d = { ...d, ...e.data.json() }; } catch (_) {
+    try { d.body = e.data.text(); } catch (_) {}
+  }
+  e.waitUntil(self.registration.showNotification(d.title, {
+    body: d.body,
+    icon: "./icon-192.png",
+    badge: "./icon-192.png",
+    // same tag => a second change replaces the first rather than stacking
+    tag: "tt-change",
+    renotify: true,
+    data: { url: d.url || "/" }
+  }));
+});
+
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || "/", self.location.origin).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if (c.url.startsWith(self.location.origin) && "focus" in c) return c.focus();
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});
+
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
