@@ -142,16 +142,54 @@ function diff(before: string, after: string): Change[] {
 
 const ROW_TO_TERM: Record<number, number> = { 1: 4, 5: 5 };
 
+// Public half of the VAPID pair — identical to VAPID_PUBLIC in index.html.
+const VAPID_PUBLIC =
+  "BHOkwPZXBzEd6uqY9B8NU6sy47UIIFaOYa4sGgFkBG9sd6xqQ7RycXJLDFz_e-C6-AZqqONaeZFF4B0n7IVRx-s";
+
+function b64uToBytes(s: string): Uint8Array {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const bin = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...bin].map((c) => c.charCodeAt(0)));
+}
+function bytesToB64u(b: Uint8Array): string {
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 Deno.serve(async () => {
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const vapidKeys = await webpush.importVapidKeys(
-    JSON.parse(Deno.env.get("VAPID_JWK")!),
-    { extractable: false },
-  );
+  // The secret is just the 43-char private scalar (d), not a JSON blob —
+  // pasting JSON into a dashboard field is too easy to truncate, and an
+  // earlier attempt did exactly that. x and y are recovered from the public
+  // key below, which is not secret and ships in index.html.
+  const d = (Deno.env.get("VAPID_PRIVATE") ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(d)) {
+    return json({
+      error: "VAPID_PRIVATE is missing or malformed",
+      hint: "Expected the 43-character base64url private key on its own — no quotes, braces or JSON.",
+      got: { length: d.length },
+    }, 500);
+  }
+
+  const pubBytes = b64uToBytes(VAPID_PUBLIC);
+  if (pubBytes.length !== 65 || pubBytes[0] !== 4) {
+    return json({ error: "VAPID_PUBLIC is not an uncompressed P-256 point" }, 500);
+  }
+  const x = bytesToB64u(pubBytes.slice(1, 33));
+  const y = bytesToB64u(pubBytes.slice(33, 65));
+
+  let vapidKeys;
+  try {
+    vapidKeys = await webpush.importVapidKeys({
+      publicKey:  { kty: "EC", crv: "P-256", x, y, key_ops: ["verify"], ext: true },
+      privateKey: { kty: "EC", crv: "P-256", x, y, d, key_ops: ["sign"], ext: true },
+    }, { extractable: false });
+  } catch (e) {
+    return json({ error: "VAPID keys could not be imported", detail: String(e) }, 500);
+  }
   const appServer = await webpush.ApplicationServer.new({
     contactInformation: "mailto:" + (Deno.env.get("CONTACT_EMAIL") ?? "aryn.snh@gmail.com"),
     vapidKeys,

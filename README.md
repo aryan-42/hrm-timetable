@@ -112,9 +112,11 @@ second. `forcePush` ignores that check — use it after editing the script.
 
 ### Notification setup
 
-1. **Secret** — Edge Functions → Secrets → add `VAPID_JWK`, the JSON holding the
-   VAPID key pair. The public half is in `index.html` as `VAPID_PUBLIC` and is
-   meant to be public; the private half must only ever live in this secret.
+1. **Secret** — Edge Functions → Secrets → add `VAPID_PRIVATE`: the 43-character
+   base64url private key, on its own with no quotes, braces or JSON. The public
+   half lives in `index.html` as `VAPID_PUBLIC` and is meant to be public; the
+   function recovers the key's x and y coordinates from it, so the secret only
+   ever has to carry the private scalar.
 2. **Trigger** — Database → Webhooks → create a hook on `publish_log`, event
    `INSERT`, type *Supabase Edge Functions*, function `notify-changes`, and use
    "Add auth header with service key". Supabase supplies the key itself, so it
