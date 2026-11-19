@@ -197,8 +197,10 @@ Deno.serve(async () => {
 
   const { data: pending, error } = await supa
     .from("publish_log")
-    .select("id, term, csv_before, csv_after")
-    .eq("mode", "auto")
+    .select("id, term, mode, csv_before, csv_after")
+    // Any row carrying both CSVs is a real publish, whether it went live
+    // automatically or an approver released it. Held rows store no CSVs, so
+    // they are excluded by the two not-null filters below rather than by mode.
     .is("notified_at", null)
     .not("csv_before", "is", null)
     .not("csv_after", "is", null)
@@ -282,7 +284,7 @@ Deno.serve(async () => {
     }
 
     await supa.from("publish_log").update({ notified_at: new Date().toISOString() }).eq("id", row.id);
-    report.push({ log: row.id, term, changes: changes.length, students: perStudent.size, sent, gone, failed });
+    report.push({ log: row.id, term, mode: row.mode, changes: changes.length, students: perStudent.size, sent, gone, failed });
   }
 
   return json({ processed: pending.length, report });

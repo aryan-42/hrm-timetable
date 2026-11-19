@@ -1,5 +1,16 @@
 # Changelog
 
+## v8.4
+- **Fixed:** approving a held update published it without notifying anyone.
+  `approve_staging` wrote straight to the live table, and the notifier is driven
+  by `publish_log`, so an approved change reached the batch in silence. It now
+  records the publish like any other, and the notifier covers approved updates
+  as well as automatic ones.
+- Notifications vibrate and stay on screen until dismissed. Web Push has no
+  custom-sound option on Android Chrome — the tone comes from the system
+  notification channel for the site — so the payload now sets `silent: false`
+  and a vibration pattern rather than pretending to control the sound.
+
 ## v8.3
 - **Changes now go live automatically.** The Apps Script push publishes straight to
   the batch instead of waiting for an approver. A sanity check runs first and holds
