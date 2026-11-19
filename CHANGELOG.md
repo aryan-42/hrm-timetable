@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.2
+- Overrides manager in the Me tab: approvers see every active manual override in one
+  place and can remove stale ones. Previously an override for a past date stayed
+  active in the database but dropped out of the app's view, so it could never be
+  cleared — it just kept applying.
+- Override text is HTML-escaped on render
+
 ## v8.1
 - Installable PWA: manifest, offline service worker, home-screen icons
 - "Term begins in N days" state instead of a bare empty day before term starts
